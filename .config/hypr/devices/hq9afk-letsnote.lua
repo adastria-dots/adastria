@@ -19,3 +19,8 @@ hl.monitor({
 	position = "auto",
 	mirror = "eDP-1",
 })
+
+B.auto_start({ 
+	"fcitx5",
+	"keqing-shell"
+ })

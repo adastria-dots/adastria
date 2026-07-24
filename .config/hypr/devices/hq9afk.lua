@@ -21,4 +21,8 @@ hl.config({
 	},
 })
 
-B.auto_start({ "sunshine" })
+B.auto_start({ 
+	"fcitx5",
+	"sunshine",
+	"keqing-shell start-locked"
+ })

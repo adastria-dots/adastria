@@ -219,9 +219,4 @@ B.map_keybinds({ mouse = true }, {
 	[B.mod("mouse:273")] = hl.dsp.window.resize(),
 })
 
-B.auto_start({
-	"fcitx5",
-	"keqing-shell"
-})
-
 B.load_device()
