@@ -494,6 +494,13 @@ for (let i = 1; i <= 10; i++) {
     );
     scheduleWorkspaceBroadcast();
   });
+  COMPOSITOR.key.bind(`workspace-move-window-${key}`, `Super+Shift+${key}`, () => {
+    HYBRID_WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
+      HYBRID_WINDOW_MANAGER.getCurrentMonitorName(),
+      i,
+    );
+    scheduleWorkspaceBroadcast();
+  });
 }
 
 COMPOSITOR.key.bind("volume-lower", "XF86AudioLowerVolume", () => {

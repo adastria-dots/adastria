@@ -317,7 +317,6 @@ export interface WorkspaceWindowSnapshot {
   snapZone?: SnapZone | null;
   snapMonitor?: string | null;
   minimized: boolean;
-  maximized: boolean;
 }
 /**
  * Compact, serializable view of the workspace layout for external clients
@@ -717,7 +716,6 @@ export class Workspace {
       );
       window.state[WINDOW_STATE_MINIMIZED].set(restored.minimized);
       window.state[WINDOW_STATE_MINIMIZE_VISUAL_IDLE].set(restored.minimized);
-      window.state[WINDOW_STATE_MAXIMIZED].set(restored.maximized);
     }
     const visible = this.isActive();
     window.state[WINDOW_STATE_WORKSPACE_VISIBLE].set(visible);
@@ -1656,7 +1654,6 @@ export class Workspace {
       snapZone: window.state[WINDOW_STATE_SNAP_ZONE](),
       snapMonitor: window.state[WINDOW_STATE_SNAP_MONITOR](),
       minimized: window.state[WINDOW_STATE_MINIMIZED](),
-      maximized: window.state[WINDOW_STATE_MAXIMIZED](),
     };
   }
 
@@ -2902,49 +2899,63 @@ export class HybridWindowManager {
     });
   }
 
-  public moveFocusedWindowToWorkspace(direction: -1 | 1) {
-    withManagedWindowOnlySSDRebuildSuppressed(() => {
-      this.syncWorkspaces();
+  private moveFocusedWindowToWorkspaceIndexInternal(
+    fromWorkspace: Workspace,
+    targetIndex: number,
+    follow: boolean,
+  ) {
+    if (targetIndex === fromWorkspace.index) {
+      return;
+    }
 
-      const focused = Array.from(this.workspaces.values())
-        .map((workspace) => ({
-          workspace,
-          window: workspace.focusedWindow(),
-        }))
-        .find(({ window }) => window !== undefined);
-      const window = focused?.window;
-      if (!window) {
-        return;
-      }
+    const window = fromWorkspace.focusedWindow();
+    if (!window) {
+      return;
+    }
 
-      const fromWorkspace = focused.workspace;
-      const targetIndex = Math.max(1, fromWorkspace.index + direction);
-      if (targetIndex === fromWorkspace.index) {
-        return;
-      }
+    const targetWorkspace = this.ensureWorkspace(
+      fromWorkspace.monitor,
+      targetIndex,
+    );
+    const moved = fromWorkspace.takeWindowForMove(window);
+    if (!moved) {
+      return;
+    }
 
-      const targetWorkspace = this.ensureWorkspace(
-        fromWorkspace.monitor,
-        targetIndex,
-      );
-      const moved = fromWorkspace.takeWindowForMove(window);
-      if (!moved) {
-        return;
-      }
-
-      targetWorkspace.addMovedWindow(window, moved.snapshot);
-      fromWorkspace.applyLayout();
-      targetWorkspace.applyLayout();
+    targetWorkspace.addMovedWindow(window, moved.snapshot);
+    fromWorkspace.applyLayout();
+    targetWorkspace.applyLayout();
+    if (follow) {
       this.switchWorkspaceTo(fromWorkspace.monitor, targetIndex, {
         focusActiveAfter: false,
       });
-      if (targetWorkspace.isTiled) {
-        targetWorkspace.panToWindow(window);
-      }
+    }
+    if (targetWorkspace.isTiled) {
+      targetWorkspace.panToWindow(window);
+    }
+    if (follow) {
       window.focus();
-      this.applyWorkspaceStackPolicy(fromWorkspace);
-      this.applyWorkspaceStackPolicy(targetWorkspace);
-      this.syncWorkspaceVisibility();
+    }
+    this.applyWorkspaceStackPolicy(fromWorkspace);
+    this.applyWorkspaceStackPolicy(targetWorkspace);
+    this.syncWorkspaceVisibility();
+  }
+
+  public moveFocusedWindowToWorkspaceIndex(
+    monitor: string,
+    targetIndex: number,
+    options?: { follow?: boolean },
+  ) {
+    const follow = options?.follow ?? true;
+    withManagedWindowOnlySSDRebuildSuppressed(() => {
+      this.syncWorkspaces();
+      const currentIndex = this.activeWorkspaceByMonitor.get(monitor) ?? 1;
+      const fromWorkspace = this.ensureWorkspace(monitor, currentIndex);
+      this.moveFocusedWindowToWorkspaceIndexInternal(
+        fromWorkspace,
+        targetIndex,
+        follow,
+      );
     });
   }
 
