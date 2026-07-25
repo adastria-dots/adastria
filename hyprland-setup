@@ -16,61 +16,73 @@ sudo -v
 echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-keqing-setup >/dev/null
 trap 'sudo rm -f /etc/sudoers.d/99-keqing-setup' EXIT
 
-SYSTEM_PKGS=(
-    bluez
-    bluez-utils
-    fcitx5
-    fcitx5-mozc
-    fcitx5-unikey
-    fontconfig
+CORE_PKGS=(
     git
-    greetd
     grub
-    hyprland
-    imagemagick
-    kitty
-    libnotify
-    networkmanager
     pciutils
-    pipewire
-    pipewire-alsa
-    pipewire-audio
-    pipewire-pulse
-    qt6-5compat
-    qt6-multimedia
-    quickshell
     stow
-    syncthing
     upower
-    wireplumber
+    zsh
+)
+
+COMPOSITOR_PKGS=(
+    greetd
+    hyprland
+    quickshell
     wl-clipboard
     xdg-desktop-portal
     xdg-desktop-portal-hyprland
     xdg-utils
-    zsh
 )
 
-EXTRA_PKGS=(
+AUDIO_PKGS=(
+    pipewire
+    pipewire-alsa
+    pipewire-audio
+    pipewire-pulse
+    wireplumber
+)
+
+CONNECTIVITY_PKGS=(
+    bluez
+    bluez-utils
+    networkmanager
+    syncthing
+)
+
+INPUT_PKGS=(
+    fcitx5
+    fcitx5-mozc
+    fcitx5-unikey
+)
+
+FONT_PKGS=(
+    fontconfig
+    noto-fonts-cjk
+    noto-fonts-emoji
+    otf-comicshanns-nerd
+)
+
+DESKTOP_PKGS=(
+    desktop-file-utils
+    hyprshot
+    imagemagick
+    kitty
+    libnotify
+    mpv
+    qt6-declarative
+    qt6-multimedia
+)
+
+CLI_PKGS=(
     bat
     brightnessctl
     btop
-    cava
     chafa
-    cmake
-    code
-    desktop-file-utils
     fastfetch
     fd
     fzf
-    hyprshot
     jq
-    mpv
-    nodejs
-    noto-fonts-cjk
-    noto-fonts-emoji
-    npm
-    otf-comicshanns-nerd
-    qt6-declarative
     ripgrep
     starship
     unzip
@@ -79,6 +91,13 @@ EXTRA_PKGS=(
     yt-dlp
     zoxide
     zsh-autosuggestions
+)
+
+DEV_PKGS=(
+    cmake
+    code
+    nodejs
+    npm
 )
 
 AUR_PKGS=(
@@ -98,14 +117,11 @@ else
 fi
 
 # 2. Dependencies
-step "Installing system packages"
-paru -S --needed --noconfirm "${SYSTEM_PKGS[@]}"
-
-step "Installing extra packages"
-paru -S --needed --noconfirm "${EXTRA_PKGS[@]}"
-
-step "Installing AUR packages"
-paru -S --needed --noconfirm "${AUR_PKGS[@]}"
+for group in CORE COMPOSITOR AUDIO CONNECTIVITY INPUT FONT DESKTOP CLI DEV AUR; do
+    step "Installing $group packages"
+    ref="${group}_PKGS[@]"
+    paru -S --needed --noconfirm "${!ref}"
+done
 
 # 3. GPU drivers
 step "Installing GPU drivers"
