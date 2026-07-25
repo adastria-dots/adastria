@@ -1,7 +1,4 @@
 // VARIABLES
-// Single source of truth for shared constants: home/repo paths, workspaces
-// per monitor, default app commands, and the keqing-shell IPC command
-// strings. Ported from utils/variables.lua.
 
 import { homedir } from "node:os";
 import { colors } from "./colors";

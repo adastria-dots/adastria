@@ -81,19 +81,11 @@ export function playRectAnimation(
     const from = snapshotRect(window.state[windowRectState]());
     const target = snapshotRect(to);
 
-    // Layout/focus updates can ask for the same target repeatedly while Rust is
-    // already interpolating toward it. Re-scheduling the same channel in that
-    // case races with focus-driven reevaluations and can leave one window using
-    // an older animated rect for a frame. Treat rect animation requests as
-    // idempotent at the declarative target level.
     const previousTarget = activeRectTarget(window, windowRectState)?.target;
     if (previousTarget && sameRect(previousTarget, target)) {
         return;
     }
 
-    // TS keeps the declarative target. Rust owns the frame-by-frame visual
-    // interpolation and falls back to this target when the scheduled animation
-    // finishes or is cancelled.
     window.state[windowRectState].set(target);
     const token = ++rectAnimationToken;
     setActiveRectTarget(window, windowRectState, { target, token });

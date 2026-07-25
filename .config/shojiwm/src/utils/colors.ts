@@ -1,9 +1,4 @@
 // COLORS
-// Reads the *live* theme palette from ~/.config/keqing-shell/colors.json (the
-// "current" theme object) at module load, so borders/accents stay in sync
-// with whatever theme keqing-shell currently has active. Falls back to a
-// hardcoded dark-purple palette if the file or a given key is missing.
-// Ported from utils/colors.lua.
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";

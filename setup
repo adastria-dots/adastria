@@ -67,6 +67,7 @@ EXTRA_PKGS=(
     mpv
     nodejs
     noto-fonts-cjk
+    noto-fonts-emoji
     npm
     otf-comicshanns-nerd
     qt6-declarative
@@ -81,8 +82,6 @@ EXTRA_PKGS=(
 )
 
 AUR_PKGS=(
-    claude-code
-    unimatrix-git
     zen-browser-bin
 )
 

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# Keqing-dots tiling wrapper for external applications (ShojiWM)
+
+deps socat || exit 1
+
+SOCK="${XDG_RUNTIME_DIR:-/tmp}/shojiwm-${WAYLAND_DISPLAY:-wayland-0}.sock"
+
+# Convert args to JSON literals
+_json_lit() { [[ "$1" =~ ^-?[0-9]+$ ]] && echo "$1" || printf '"%s"' "${1//\"/}"; }
+
+_send() { printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCK" >/dev/null 2>&1; }
+
+case "$1" in
+    fw) _send "{\"method\":\"workspace/focus\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
+    mw)
+        follow="true"
+        [[ "$2" == "q" ]] && { follow="false"; shift; }
+        params="\"index\":$(_json_lit "$2"),\"follow\":$follow"
+        [[ -n "$3" ]] && params="$params,\"windowId\":$(_json_lit "$3")"
+        _send "{\"method\":\"window/move\",\"params\":{$params}}"
+        ;;
+    cw)
+        if [[ -n "$2" ]]; then
+            _send "{\"method\":\"window/close\",\"params\":{\"scope\":$(_json_lit "$2")}}"
+        else
+            _send "{\"method\":\"window/close\",\"params\":{}}"
+        fi
+        ;;
+    mi) _send "{\"method\":\"workspace/moveInto\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
+    sw) _send "{\"method\":\"workspace/swap\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
+    *) echo "usage: shojitile <cw|fw|mi|mw|sw> [args]" >&2 ;;
+esac
