@@ -1,6 +1,6 @@
 -- TILING (native workspace/window management)
 
-local V = require("utils.variables")
+local WPM = 10
 
 local Tiling = {}
 
@@ -17,10 +17,10 @@ local function resolve(id, global)
 	if global then return id end
 
 	local n = tonumber(id)
-	if not n or n < 1 or n > V.wpm then return id end
+	if not n or n < 1 or n > WPM then return id end
 
 	local active = active_ws_id() or 1
-	local base = math.floor((active - 1) / V.wpm) * V.wpm
+	local base = math.floor((active - 1) / WPM) * WPM
 	return base + n
 end
 

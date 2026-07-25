@@ -1,13 +1,87 @@
 -- HYPRLAND CONFIG
 
-local V = require("utils.variables")
 local B = require("utils.bootstrap")
 local T = require("utils.tiling")
+
+-- =========
+-- COLORS
+-- =========
+local col = (function()
+	local path = os.getenv("HOME") .. "/.config/keqing-shell/colors.json"
+	local f = io.open(path, "r")
+	local _c = {}
+
+	if f then
+		local content = f:read("*a")
+		f:close()
+		local current = content:match('"current"%s*:%s*(%b{})')
+		if current then
+			for key, value in current:gmatch('"(%w+)"%s*:%s*"(#[%x]+)"') do
+				_c[key] = value
+			end
+		end
+	end
+
+	return {
+		-- dark range (color0–7)
+		base = _c.base or "#0A0614",
+		surface = _c.surface or "#110B22",
+		surfaceAlt = _c.surfaceAlt or "#1A1238",
+		accentAltContainer = _c.accentAltContainer or "#2B1D5C",
+		accentContainer = _c.accentContainer or "#3D1878",
+		lavender = _c.lavender or "#5E50A0",
+		textDim = _c.lavender or "#5E50A0",
+		rose = _c.rose or "#7A4A58",
+		textMuted = _c.textMuted or "#A896C8",
+		-- bright range (color8–15)
+		fieldBg = _c.fieldBg or "#0F1535",
+		overlay = _c.overlay or "#1C1848",
+		overlayAlt = _c.overlayAlt or "#252060",
+		accentAlt = _c.accentAlt or "#C8942A",
+		accentDim = _c.accentDim or "#5535B8",
+		accent = _c.accent or "#7B2FE8",
+		lavenderLight = _c.lavenderLight or "#C87EFF",
+		text = _c.text or "#F0ECF8",
+	}
+end)()
+
+-- =========
+-- VARIABLES
+-- =========
+local V = {}
+
+V.col = col
+
+-- Home
+V.home = os.getenv("HOME")
+
+-- Core
+V.root = V.home .. "/keqing-dots"
+V.wpm = 10
+
+-- Applications
+V.terminal = "kitty"
+V.browser = "zen-browser"
+V.browser_private = "zen-browser --private"
+V.editor = "code"
+V.filemanager = V.terminal .. " yazi"
+V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot -m region -o $HOME/Pictures/screenshots/'"
+
+-- Keqing-shell IPC Calls
+V.qs = "keqing-shell "
+V.control = V.qs .. "controlcenter"
+V.launcher = V.qs .. "launcher"
+V.lock = V.qs .. "lock"
+V.logout = V.qs .. "logout"
+V.matrix = V.qs .. "matrix"
+V.overview = V.qs .. "overview"
+V.settings = V.qs .. "settings"
+V.visualizer = V.qs .. "visualizer"
 
 -- =====================
 -- ENVIRONMENT VARIABLES
 -- =====================
-B.map_env({
+for k, v in pairs({
 	-- Core
 	KEQING_DOTS_ROOT = V.root,
 	WORKSPACES_PER_MONITOR = V.wpm,
@@ -43,17 +117,21 @@ B.map_env({
 	GDK_BACKEND = "wayland,x11",
 	MOZ_ENABLE_WAYLAND = "1",
 	GTK_USE_PORTAL = "1",
-})
+}) do
+	hl.env(k, v)
+end
 
 -- ==========
 -- ANIMATIONS
 -- ==========
-B.map_curves({
+for name, points in pairs({
 	quick = { { 0.15, 0 }, { 0.1, 1 } },
 	linear = { { 0, 0 }, { 1, 1 } },
-})
+}) do
+	hl.curve(name, { type = "bezier", points = points })
+end
 
-B.map_anim({
+for _, anim in ipairs({
 	{ leaf = "global", enabled = false },
 	{ leaf = "fadeIn", speed = 1.5, bezier = "linear" },
 	{ leaf = "fadeOut", speed = 1.5, bezier = "linear" },
@@ -61,7 +139,10 @@ B.map_anim({
 	{ leaf = "windowsOut", speed = 1.5, bezier = "linear", style = "popin 85%" },
 	{ leaf = "windowsMove", speed = 2.0, bezier = "quick" },
 	{ leaf = "workspaces", speed = 2.5, bezier = "quick", style = "slidevert" },
-})
+}) do
+	if anim.enabled == nil then anim.enabled = true end
+	hl.animation(anim)
+end
 
 -- ========
 -- SETTINGS
@@ -132,7 +213,7 @@ hl.config({
 -- ======================
 -- INITIAL MONITOR CONFIG
 -- ======================
-B.set_monitor("", "preferred", "0x0", 1, 0)
+hl.monitor({ output = "", mode = "preferred", position = "0x0", scale = 1, transform = 0 })
 
 -- ========
 -- GESTURES
@@ -151,39 +232,45 @@ hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
 -- ===========
 
 -- keqing-shell
-B.map_keybinds(nil, {
-	[B.mod("C", "s")] = B.exec(V.control),
-	[B.mod("I")] = B.exec(V.settings),
-	[B.mod("L")] = B.exec(V.lock),
-	[B.mod("M")] = B.exec(V.matrix),
-	[B.mod("Q")] = B.exec(V.logout),
-	[B.mod("V", "s")] = B.exec(V.visualizer),
-	[B.mod("TAB")] = B.exec(V.overview),
-	["SHIFT + SPACE"] = B.exec(V.launcher),
-})
+for k, v in pairs({
+	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.control),
+	[B.mod("I")] = hl.dsp.exec_cmd(V.settings),
+	[B.mod("L")] = hl.dsp.exec_cmd(V.lock),
+	[B.mod("M")] = hl.dsp.exec_cmd(V.matrix),
+	[B.mod("Q")] = hl.dsp.exec_cmd(V.logout),
+	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.visualizer),
+	[B.mod("TAB")] = hl.dsp.exec_cmd(V.overview),
+	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.launcher),
+}) do
+	hl.bind(k, v)
+end
 
 -- Window states
-B.map_keybinds(nil, {
+for k, v in pairs({
 	[B.mod("F")] = hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }),
 	[B.mod("F", "s")] = hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }),
 	[B.mod("P")] = hl.dsp.window.pseudo(),
 	[B.mod("V")] = hl.dsp.window.float({ action = "toggle" }),
-})
+}) do
+	hl.bind(k, v)
+end
 
 -- Apps
-B.map_keybinds(nil, {
-	[B.mod("B")] = B.exec(V.browser),
-	[B.mod("B", "s")] = B.exec(V.browser_private),
-	[B.mod("C")] = B.exec(V.editor),
-	[B.mod("E")] = B.exec(V.filemanager),
-	[B.mod("K", "a")] = B.exec(V.editor .. " keqing-shell"),
-	[B.mod("K", "s")] = B.exec(V.editor .. " keqing-dots"),
-	[B.mod("S", "s")] = B.exec(V.screenshot),
-	[B.mod("T")] = B.exec(V.terminal),
-})
+for k, v in pairs({
+	[B.mod("B")] = hl.dsp.exec_cmd(V.browser),
+	[B.mod("B", "s")] = hl.dsp.exec_cmd(V.browser_private),
+	[B.mod("C")] = hl.dsp.exec_cmd(V.editor),
+	[B.mod("E")] = hl.dsp.exec_cmd(V.filemanager),
+	[B.mod("K", "a")] = hl.dsp.exec_cmd(V.editor .. " keqing-shell"),
+	[B.mod("K", "s")] = hl.dsp.exec_cmd(V.editor .. " keqing-dots"),
+	[B.mod("S", "s")] = hl.dsp.exec_cmd(V.screenshot),
+	[B.mod("T")] = hl.dsp.exec_cmd(V.terminal),
+}) do
+	hl.bind(k, v)
+end
 
 -- Window operations
-B.map_keybinds({ repeating = true }, {
+for k, v in pairs({
 	[B.mod("down")] = hl.dsp.focus({ direction = "d" }),
 	[B.mod("down", "s")] = function() T.adaptive_move("d") end,
 	[B.mod("left")] = hl.dsp.focus({ direction = "l" }),
@@ -193,7 +280,9 @@ B.map_keybinds({ repeating = true }, {
 	[B.mod("up")] = hl.dsp.focus({ direction = "u" }),
 	[B.mod("up", "s")] = function() T.adaptive_move("u") end,
 	[B.mod("W")] = hl.dsp.window.close(),
-})
+}) do
+	hl.bind(k, v, { repeating = true })
+end
 
 -- Workspace operations
 for i = 1, V.wpm do
@@ -204,19 +293,23 @@ for i = 1, V.wpm do
 end
 
 -- Media
-B.map_keybinds({ locked = true, repeating = true }, {
-	["XF86AudioLowerVolume"] = B.exec("wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%-"),
-	["XF86AudioMicMute"] = B.exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
-	["XF86AudioMute"] = B.exec("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
-	["XF86AudioRaiseVolume"] = B.exec("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 1%+"),
-	["XF86MonBrightnessDown"] = B.exec("brightnessctl -e4 -n2 set 1%-"),
-	["XF86MonBrightnessUp"] = B.exec("brightnessctl -e4 -n2 set 1%+"),
-})
+for k, v in pairs({
+	["XF86AudioLowerVolume"] = hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%-"),
+	["XF86AudioMicMute"] = hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
+	["XF86AudioMute"] = hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
+	["XF86AudioRaiseVolume"] = hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 1%+"),
+	["XF86MonBrightnessDown"] = hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 1%-"),
+	["XF86MonBrightnessUp"] = hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 1%+"),
+}) do
+	hl.bind(k, v, { locked = true, repeating = true })
+end
 
 -- Mouse
-B.map_keybinds({ mouse = true }, {
+for k, v in pairs({
 	[B.mod("mouse:272")] = hl.dsp.window.drag(),
 	[B.mod("mouse:273")] = hl.dsp.window.resize(),
-})
+}) do
+	hl.bind(k, v, { mouse = true })
+end
 
 B.load_device()

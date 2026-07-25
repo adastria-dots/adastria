@@ -1,11 +1,12 @@
 -- BOOTSTRAP
 
-local V = require("utils.variables")
+-- must match hyprland.lua's V.wpm
+local WPM = 10
 
 local B = {}
 
 function B.assign_workspaces(monitor_names, wpm)
-	wpm = wpm or V.wpm
+	wpm = wpm or WPM
 	for mon_idx, monitor_name in ipairs(monitor_names) do
 		local base = (mon_idx - 1) * wpm
 		for i = 1, wpm do hl.workspace_rule({ workspace = base + i, monitor = monitor_name, persistent = true }) end
@@ -18,30 +19,11 @@ function B.auto_start(cmds)
 	end)
 end
 
-function B.exec(cmd)
-	return hl.dsp.exec_cmd(cmd)
-end
-
 function B.load_device()
 	local f = io.open("/etc/hostname")
 	local device = f and f:read("*l")
 	if f then f:close() end
 	return require("devices." .. (device or "hq9afk"))
-end
-
-function B.map_anim(anims)
-	for _, anim in ipairs(anims) do
-		if anim.enabled == nil then anim.enabled = true end
-		hl.animation(anim)
-	end
-end
-
-function B.map_curves(curves)
-	for name, points in pairs(curves) do hl.curve(name, { type = "bezier", points = points }) end
-end
-
-function B.map_env(env)
-	for k, v in pairs(env) do hl.env(k, v) end
 end
 
 function B.map_keybinds(opts, keys)
