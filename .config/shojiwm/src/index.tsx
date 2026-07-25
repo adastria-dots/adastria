@@ -43,13 +43,13 @@ COMPOSITOR.env.apply({
   QT_IM_MODULE: "fcitx",
   XMODIFIERS: "@im=fcitx",
   SDL_IM_MODULE: "fcitx",
-  GLFW_IM_MODULE: "ibus",
+  GLFW_IM_MODULE: "fcitx",
   ELECTRON_OZONE_PLATFORM_HINT: "wayland",
 });
 COMPOSITOR.env.publish();
 
 COMPOSITOR.cursor.configure({
-  theme: "Bibata-Modern-Ice",
+  theme: "Keqing",
   size: 24,
 });
 
