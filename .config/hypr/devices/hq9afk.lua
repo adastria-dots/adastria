@@ -15,11 +15,7 @@ L.register({
 	["DP-2"] = 2,
 })
 
-hl.config({
-	cursor = {
-		default_monitor = "DP-3",
-	},
-})
+hl.config({ cursor = { default_monitor = "DP-3" } })
 
 B.auto_start({ 
 	"fcitx5",
