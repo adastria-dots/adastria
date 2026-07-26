@@ -9,9 +9,7 @@ B.setup_displays(monitors)
 
 L.register(2)
 
-hl.config({
-	input = { scroll_method = "no_scroll" },
-})
+hl.config({ input = { scroll_method = "no_scroll" } })
 
 hl.monitor({
 	output = "DP-2",
