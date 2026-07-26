@@ -4,6 +4,7 @@ import {
   createWindowStack,
   createWindowState,
   cubicBezier,
+  dropWindowState,
   markManagedWindowDirty,
   markWindowDirty,
   read,
@@ -26,7 +27,6 @@ import {
 import type { ManagedWindowRect, WindowSizeConstraints } from "shoji_wm/types";
 import { playRectAnimation, stopRectAnimation } from "./window-animation";
 
-// ==== geometry.ts ====
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -111,8 +111,6 @@ export function averageOr(values: number[], fallback: number): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-
-// ==== debug.ts ====
 function hotReloadDebugEnabled(): boolean {
   const env = (globalThis as { process?: { env?: Record<string, string> } })
     .process?.env;
@@ -130,8 +128,6 @@ export function hotReloadDebug(
   console.info(`hot-reload ${message}`, JSON.stringify(details));
 }
 
-
-// ==== ssd.ts ====
 const MANAGED_WINDOW_ONLY_REBUILD_SUPPRESSION = {
   allowManagedWindowOnly: true,
   onViolation: "fallback-last",
@@ -158,10 +154,8 @@ export function withManagedWindowOnlySSDRebuildSuppressed<T>(
   );
 }
 
-
-// ==== state.ts ====
 export type SnapZone =
-  | "maximize"
+  | "monocle"
   | "left"
   | "right"
   | "top-left"
@@ -184,7 +178,7 @@ export const WINDOW_STATE_MINIMIZE_VISUAL_IDLE = createWindowState<boolean>(
     default: false,
   },
 );
-export const WINDOW_STATE_MAXIMIZED = createWindowState<boolean>("maximized", {
+export const WINDOW_STATE_MONOCLE = createWindowState<boolean>("monocle", {
   default: false,
 });
 export const WINDOW_STATE_FULLSCREEN = createWindowState<boolean>(
@@ -193,9 +187,7 @@ export const WINDOW_STATE_FULLSCREEN = createWindowState<boolean>(
     default: false,
   },
 );
-// Pre-fullscreen rect, kept separate from WINDOW_STATE_RESTORE_RECT so a
-// window that was maximized before going fullscreen restores back to its
-// maximized rect (and the maximize restore rect underneath stays intact).
+// Separate so monocle→fullscreen restores to monocle, not RESTORE_RECT.
 export const WINDOW_STATE_FULLSCREEN_RESTORE_RECT =
   createWindowState<ManagedWindowRect | null>("fullscreenRestoreRect", {
     default: null,
@@ -247,7 +239,7 @@ export const WINDOW_STATE_SNAP_MONITOR =
   });
 export const OPEN_CLOSE_ANIMATION_DURATION = seconds(0.22);
 export const WINDOW_MANAGEMENT_ANIMATION_DURATION = seconds(0.2);
-export const UNMAXIMIZE_GRAB_ANIMATION_DURATION = 90;
+export const MONOCLE_EXIT_GRAB_ANIMATION_DURATION = 90;
 export const WINDOW_MANAGEMENT_EASING = cubicBezier(0.1, 0.9, 0.2, 1.0);
 export const WINDOW_OPEN_EASING = cubicBezier(0.1, 1.1, 0.1, 1.1);
 export const WINDOW_CLOSE_EASING = cubicBezier(0.3, -0.3, 0, 1);
@@ -268,15 +260,10 @@ export const WORKSPACE_KINETIC_SCROLL_TIME_CONSTANT_MS = 360;
 export const WORKSPACE_KINETIC_SCROLL_FALLBACK_REFRESH_RATE = 120;
 export const TILE_DRAG_WORKSPACE_EDGE_PX = 80;
 export const TILE_DRAG_WORKSPACE_SWITCH_INTERVAL_MS = 420;
-// Single gap value used both between tiled windows and between a tile and
-// the screen edge, so the two always look consistent.
+// Also used between tile and screen edge, so both gaps stay consistent.
 export const TILE_GAP = 20;
 export const TILE_MAX_COLUMNS = 2;
 export const TILE_MIN_WIDTH = 240;
-// Windows-style edge snapping for floating drags. Distances are logical px.
-//   - within SNAP_EDGE_PX of an edge triggers that edge's zone
-//   - within SNAP_CORNER_PX of a corner (along both axes) triggers a quarter
-//   - SNAP_GAP_PX is the gap left between adjacent halves/quarters
 export const SNAP_EDGE_PX = 16;
 export const SNAP_CORNER_PX = 140;
 export const SNAP_GAP_PX = 8;
@@ -318,17 +305,11 @@ export interface WorkspaceWindowSnapshot {
   snapMonitor?: string | null;
   minimized: boolean;
 }
-/**
- * Compact, serializable view of the workspace layout for external clients
- * (e.g. the bar) consumed over the IPC transport. Per-monitor so a per-output
- * bar can render just its own workspaces.
- */
 export interface WorkspacesViewWindow {
   id: string;
   appId?: string;
   title: string;
   focused: boolean;
-  /** epoch ms — most recent focus time for MRU ordering. 0 if never focused. */
   lastFocusedAt: number;
 }
 
@@ -366,24 +347,11 @@ export interface WorkspaceGestureState {
 export type WorkspaceGestureMode = "workspace-switch" | "workspace-scroll";
 
 export interface WorkspaceGestureSpeedConfig {
-  /**
-   * Horizontal three-finger swipe movement multiplier for scrolling inside a
-   * tiled workspace.
-   */
   workspaceScrollFactor?: number;
-  /**
-   * Horizontal release velocity multiplier for kinetic workspace scrolling.
-   * Defaults to workspaceScrollFactor when omitted.
-   */
+  // Defaults to workspaceScrollFactor when omitted.
   workspaceScrollKineticFactor?: number;
-  /**
-   * Vertical three-finger swipe movement multiplier for workspace switching.
-   */
   workspaceSwitchFactor?: number;
-  /**
-   * Vertical release velocity multiplier for deciding whether to commit a
-   * workspace switch. Defaults to workspaceSwitchFactor when omitted.
-   */
+  // Defaults to workspaceSwitchFactor when omitted.
   workspaceSwitchVelocityFactor?: number;
 }
 
@@ -402,16 +370,14 @@ export const DEFAULT_WORKSPACE_GESTURE_SPEED: ResolvedWorkspaceGestureSpeedConfi
 };
 export const WINDOW_BORDER_PX = 5;
 export const TITLEBAR_HEIGHT = 30;
-export const MAXIMIZED_WINDOW_PADDING = {
+export const MONOCLE_WINDOW_PADDING = {
   top: TILE_GAP,
   right: TILE_GAP,
   bottom: TILE_GAP,
   left: TILE_GAP,
 };
 
-
-// ==== snap-zones.ts ====
-export type LayoutSnapZone = Exclude<SnapZone, "maximize">;
+export type LayoutSnapZone = Exclude<SnapZone, "monocle">;
 type SnapColumn = "left" | "right";
 
 export interface FloatingSnapLayout {
@@ -420,7 +386,7 @@ export interface FloatingSnapLayout {
   rightSplitY: number;
 }
 export function isLayoutSnapZone(zone: SnapZone | null): zone is LayoutSnapZone {
-  return zone !== null && zone !== "maximize";
+  return zone !== null && zone !== "monocle";
 }
 
 export function isLeftSnapZone(zone: LayoutSnapZone): boolean {
@@ -469,18 +435,13 @@ export function snapZonesConflict(
   return false;
 }
 
-
-// ==== lifecycle-animation.ts ====
 const OPEN_ANIMATION_CHANNEL = "window.open";
 const CLOSE_ANIMATION_CHANNEL = "window.close";
 const MINIMIZE_ANIMATION_CHANNEL = "window.minimize";
 const WORKSPACE_VISUAL_ANIMATION_CHANNEL = "workspace.visual";
 const WORKSPACE_VISUAL_RECT_ANIMATION_CHANNEL = `${WORKSPACE_VISUAL_ANIMATION_CHANNEL}.rect`;
 const WORKSPACE_VISUAL_OPACITY_ANIMATION_CHANNEL = `${WORKSPACE_VISUAL_ANIMATION_CHANNEL}.opacity`;
-// Rect deltas use `add` so open/close/workspace motion can layer on top of
-// override-mode layout animation. Open/close opacity uses `multiply`; workspace
-// opacity is a separate override channel so an inactive workspace whose base
-// opacity is already 0 can still fade back in deterministically.
+// Rect deltas use `add` to layer atop override-mode layout animation.
 
 export function scheduleOpenAnimation(window: WaylandWindow): void {
   window.scheduleAnimation({
@@ -604,8 +565,6 @@ export function cancelWorkspaceVisualAnimation(window: WaylandWindow): void {
   window.cancelAnimation(WORKSPACE_VISUAL_OPACITY_ANIMATION_CHANNEL);
 }
 
-
-// ==== workspace.ts ====
 interface LayoutOptions {
   suppressSSDRebuild?: boolean;
   animate?: boolean;
@@ -618,7 +577,7 @@ export class Workspace {
   private readonly naturalRootRect: (
     window: WaylandWindow,
   ) => ManagedWindowRect;
-  private readonly maximizedRootRect: (
+  private readonly monocleRootRect: (
     window: WaylandWindow,
   ) => ManagedWindowRect;
   private readonly activeWorkspaceIndex: (monitor: string) => number;
@@ -629,8 +588,7 @@ export class Workspace {
   private activeWindowId: string | null = null;
   private visibilityAnimationToken = 0;
   private draggingWindowId: string | null = null;
-  // Layout slot reserved for the tile being dragged (the gap opened in the row).
-  // Captured during applyLayout so the bar can preview where the tile will land.
+  // Captured during applyLayout so the bar can preview where it will land.
   private lastDraggingSlotRect: ManagedWindowRect | null = null;
   private lastAppliedTileViewportRect: ManagedWindowRect | null = null;
   private scrollOffset = 0;
@@ -643,13 +601,13 @@ export class Workspace {
     index: number,
     monitor: string,
     naturalRootRect: (window: WaylandWindow) => ManagedWindowRect,
-    maximizedRootRect: (window: WaylandWindow) => ManagedWindowRect,
+    monocleRootRect: (window: WaylandWindow) => ManagedWindowRect,
     activeWorkspaceIndex: (monitor: string) => number,
   ) {
     this.index = index;
     this.monitor = monitor;
     this.naturalRootRect = naturalRootRect;
-    this.maximizedRootRect = maximizedRootRect;
+    this.monocleRootRect = monocleRootRect;
     this.activeWorkspaceIndex = activeWorkspaceIndex;
   }
 
@@ -662,8 +620,8 @@ export class Workspace {
         window.state[WINDOW_STATE_RECT].set(this.fullscreenRootRect(window));
         continue;
       }
-      if (window.state[WINDOW_STATE_MAXIMIZED]()) {
-        window.state[WINDOW_STATE_RECT].set(this.maximizedRootRect(window));
+      if (window.state[WINDOW_STATE_MONOCLE]()) {
+        window.state[WINDOW_STATE_RECT].set(this.monocleRootRect(window));
         continue;
       }
 
@@ -817,10 +775,7 @@ export class Workspace {
     return this.windows.length;
   }
 
-  /**
-   * Snapshot of every window currently in this workspace. The returned array
-   * is a copy; mutating it is safe and won't affect the workspace state.
-   */
+  // Returns a copy — safe to mutate without affecting workspace state.
   public listWindows(): WaylandWindow[] {
     return this.windows.slice();
   }
@@ -919,11 +874,11 @@ export class Workspace {
     }
 
     for (const window of this.windows) {
-      if (!window.state[WINDOW_STATE_MAXIMIZED]()) {
+      if (!window.state[WINDOW_STATE_MONOCLE]()) {
         continue;
       }
       stopRectAnimation(window, WINDOW_STATE_RECT);
-      window.state[WINDOW_STATE_RECT].set(this.maximizedRootRect(window));
+      window.state[WINDOW_STATE_RECT].set(this.monocleRootRect(window));
     }
   }
 
@@ -994,11 +949,7 @@ export class Workspace {
         window.state[WINDOW_STATE_WORKSPACE_OPACITY].set(1);
         continue;
       }
-      // Same ordering rule as prepare: schedule first, then flip
-      // VISIBLE. For from-workspace this is mostly a no-op (VISIBLE was
-      // already true), but for to-workspace's second call this keeps
-      // the same invariant in case prepareWorkspaceTransition's hold
-      // animation has already completed (e.g., rapid switches).
+      // Schedule before flipping VISIBLE — matches prepare's ordering.
       scheduleWorkspaceVisualAnimation(
         window,
         options.fromOffsetY,
@@ -1069,17 +1020,12 @@ export class Workspace {
     }
 
     for (const window of this.windows) {
-      // A window that is still maximized across the mode switch keeps its
-      // maximized rect. Restoring FLOATING_RECT here would configure the
-      // client to the rect captured at first commit (often degenerate),
-      // collapsing it to its minimum size. (Chrome and friends remember
-      // their previous session state and start maximized, which makes this
-      // easy to hit.)
-      if (window.state[WINDOW_STATE_MAXIMIZED]()) {
+      // FLOATING_RECT may be degenerate (e.g. Chrome starts maximized).
+      if (window.state[WINDOW_STATE_MONOCLE]()) {
         playRectAnimation(
           window,
           WINDOW_STATE_RECT,
-          this.maximizedRootRect(window),
+          this.monocleRootRect(window),
           WINDOW_MANAGEMENT_EASING,
           WINDOW_MANAGEMENT_ANIMATION_DURATION,
           MANAGED_WINDOW_ONLY_ANIMATION,
@@ -1165,8 +1111,8 @@ export class Workspace {
       );
       const rect = window.state[WINDOW_STATE_FULLSCREEN]()
         ? this.fullscreenRootRect(window)
-        : window.state[WINDOW_STATE_MAXIMIZED]()
-          ? this.maximizedTileRect(window, nextX)
+        : window.state[WINDOW_STATE_MONOCLE]()
+          ? this.monocleTileRect(window, nextX)
           : {
               x: nextX,
               y: read(viewportRect.y),
@@ -1212,7 +1158,6 @@ export class Workspace {
     this.applyFloatingLayout(animationOptions, animate);
   }
 
-  /** Layout slot reserved for the tile being dragged, or null when not dragging. */
   public draggingSlotRect(): ManagedWindowRect | null {
     return this.draggingWindowId ? this.lastDraggingSlotRect : null;
   }
@@ -1223,10 +1168,10 @@ export class Workspace {
     }
     this.activeWindowId = window.id;
     this.draggingWindowId = window.id;
-    const wasMaximized = window.state[WINDOW_STATE_MAXIMIZED]();
-    window.state[WINDOW_STATE_MAXIMIZED].set(false);
+    const wasMonocle = window.state[WINDOW_STATE_MONOCLE]();
+    window.state[WINDOW_STATE_MONOCLE].set(false);
     window.state[WINDOW_STATE_RESTORE_RECT].set(null);
-    if (wasMaximized) {
+    if (wasMonocle) {
       window.unmaximize();
     }
     window.state[WINDOW_STATE_TILE_DRAGGING].set(true);
@@ -1320,11 +1265,7 @@ export class Workspace {
     this.applyLayout();
   }
 
-  /**
-   * "Go to this window": center the target in the viewport (overriding the
-   * normal `scrollToWindow` which is a no-op when already visible) and animate
-   * the layout. Used by dock clicks and any other "jump to window" gesture.
-   */
+  // Unlike scrollToWindow, force-centers even if already visible ("go to").
   public panToWindow(window: WaylandWindow) {
     if (!this.isTiled) {
       return;
@@ -1665,10 +1606,7 @@ export class Workspace {
   }
 
   private canSuppressLayoutSSDRebuild(_tileable: WaylandWindow[]): boolean {
-    // Opening windows may still be building decoration structure, labels,
-    // icons, and shader inputs. SSD rebuild suppression is global, so using
-    // it for existing windows' layout animation would also hide those
-    // initial decoration updates until an unrelated interaction occurs.
+    // Suppression is global, so it'd also hide opening windows' decoration.
     return true;
   }
 
@@ -1781,10 +1719,8 @@ export class Workspace {
     animate = true,
   ) {
     for (const window of this.floatingWindows()) {
-      // A maximized window's rect is owned by the maximize flow. Rolling it
-      // back to FLOATING_RECT here could hit a degenerate rect (same reason
-      // as in setTiled(false)).
-      if (window.state[WINDOW_STATE_MAXIMIZED]()) {
+      // Same degenerate-rect risk as setTiled(false) — skip monocle windows.
+      if (window.state[WINDOW_STATE_MONOCLE]()) {
         continue;
       }
       const contentRect =
@@ -1835,14 +1771,7 @@ export class Workspace {
 
     let width = read(sizeRect.width);
     let height = read(sizeRect.height);
-    // Reading the natural size while the client geometry is still unsettled
-    // (≈0, e.g. right after the first commit) yields a degenerate rect that
-    // is nothing but the SSD frame. Freezing that as the floating restore
-    // rect would later configure the client to a tiny size when switching to
-    // floating mode. Fall back to a default size based on the usable area
-    // only when the rect is clearly degenerate (frame + titlebar at most).
-    // 50px is a conservative threshold that no real app's natural size ever
-    // falls under.
+    // Just-committed clients report ≈0 size — fall back, don't freeze it in.
     const DEGENERATE_SIZE_PX = 50;
     if (width < DEGENERATE_SIZE_PX || height < DEGENERATE_SIZE_PX) {
       width = Math.round(logicalWidth * 0.6);
@@ -1914,10 +1843,8 @@ export class Workspace {
       windowLeft +
       this.tileWidthForWindow(window, viewportRect, tileable.length);
 
-    if (window.state[WINDOW_STATE_MAXIMIZED]() || options.force) {
-      // Center the window in the viewport. `force` is set by dock-style "go to
-      // this window" requests where we always want a visible pan, even when
-      // the target is already on-screen.
+    if (window.state[WINDOW_STATE_MONOCLE]() || options.force) {
+      // `force` (dock "go to") always pans, even if already on-screen.
       this.scrollOffset =
         windowLeft + (windowRight - windowLeft) / 2 - viewportWidth / 2;
     } else if (windowLeft < this.scrollOffset) {
@@ -1946,8 +1873,8 @@ export class Workspace {
     viewportRect: ManagedWindowRect,
     tileCount: number,
   ): number {
-    if (window.state[WINDOW_STATE_MAXIMIZED]()) {
-      return read(this.maximizedRootRect(window).width);
+    if (window.state[WINDOW_STATE_MONOCLE]()) {
+      return read(this.monocleRootRect(window).width);
     }
 
     const visibleCols = Math.max(1, Math.min(tileCount, TILE_MAX_COLUMNS));
@@ -1961,16 +1888,16 @@ export class Workspace {
     );
   }
 
-  private maximizedTileRect(
+  private monocleTileRect(
     window: WaylandWindow,
     x: number,
   ): ManagedWindowRect {
-    const maximizedRect = this.maximizedRootRect(window);
+    const monocleRect = this.monocleRootRect(window);
     return {
       x,
-      y: read(maximizedRect.y),
-      width: read(maximizedRect.width),
-      height: read(maximizedRect.height),
+      y: read(monocleRect.y),
+      width: read(monocleRect.width),
+      height: read(monocleRect.height),
     };
   }
 
@@ -2073,8 +2000,6 @@ export class Workspace {
 }
 
 
-
-// ==== manager.ts ====
 function sanitizeGestureSpeedFactor(
   value: number | undefined,
   fallback: number,
@@ -2092,8 +2017,7 @@ export class HybridWindowManager {
   private readonly activeWorkspaceByMonitor = new Map<string, number>();
   private readonly windowStack = createWindowStack();
   private readonly naturalRootRect: (rect: WaylandWindow) => ManagedWindowRect;
-  // Tracks MRU focus time per window id so the dock can pick "the most recent
-  // window of an app" deterministically. Updated by recordFocus().
+  // Lets the dock pick the most-recently-used window of an app.
   private readonly lastFocusedAt = new Map<string, number>();
   private readonly pendingInitialFocusByWindowId = new Map<string, number>();
   private currentMonitor: string;
@@ -2108,7 +2032,7 @@ export class HybridWindowManager {
     workspace: Workspace;
     lastWorkspaceSwitchAt: number;
   } | null = null;
-  private maximizedMoveDrag: {
+  private monocleMoveDrag: {
     windowId: string;
     width: number;
     height: number;
@@ -2119,10 +2043,8 @@ export class HybridWindowManager {
   private workspaceGestureSpeed = { ...DEFAULT_WORKSPACE_GESTURE_SPEED };
   private lastPointerPosition: PointerMoveEvent["position"] | null = null;
   private lastPointerTarget: PointerMoveEvent["target"] = { kind: "none" };
-  // Broadcasts the active snap-zone preview rect to external clients (the bar).
   private snapPreviewBroadcaster: SnapPreviewBroadcaster | null = null;
   private workspaceChangeBroadcaster: WorkspaceChangeBroadcaster | null = null;
-  // Pending Windows-style snap decision for the in-flight floating drag.
   private floatingSnap: {
     windowId: string;
     monitor: string;
@@ -2382,10 +2304,10 @@ export class HybridWindowManager {
 
     if (window.isMaximized()) {
       window.state[WINDOW_STATE_RESTORE_RECT].set(
-        this.initialRestoreRectForMaximizedWindow(window),
+        this.initialRestoreRectForMonocleWindow(window),
       );
-      window.state[WINDOW_STATE_RECT].set(this.maximizedRectForWindow(window));
-      window.state[WINDOW_STATE_MAXIMIZED].set(true);
+      window.state[WINDOW_STATE_RECT].set(this.monocleRectForWindow(window));
+      window.state[WINDOW_STATE_MONOCLE].set(true);
     }
     if (!restoredExistingWindow) {
       scheduleOpenAnimation(window);
@@ -2423,6 +2345,8 @@ export class HybridWindowManager {
       }
     }
     this.syncWorkspaceVisibility();
+    // Without this, a window reusing a freed id inherits stale state.
+    dropWindowState(window.id);
   }
 
   public onFocus(window: WaylandWindow, focused: boolean) {
@@ -2447,7 +2371,7 @@ export class HybridWindowManager {
 
     const workspace = this.findWorkspaceForWindow(event.window);
     if (event.phase === "start" || event.phase === "update") {
-      this.beginInteractiveUnmaximize(event.window);
+      this.beginInteractiveExitMonocle(event.window);
     }
 
     if (workspace?.isTiled && workspace.shouldTile(event.window)) {
@@ -2481,30 +2405,30 @@ export class HybridWindowManager {
     }
 
     const window = event.window;
-    if (event.phase === "start" && window.state[WINDOW_STATE_MAXIMIZED]()) {
+    if (event.phase === "start" && window.state[WINDOW_STATE_MONOCLE]()) {
       const restoreRect =
         window.state[WINDOW_STATE_RESTORE_RECT]() ?? event.currentRect;
-      this.maximizedMoveDrag = {
+      this.monocleMoveDrag = {
         windowId: window.id,
         width: read(restoreRect.width),
         height: read(restoreRect.height),
       };
-      this.beginInteractiveUnmaximize(window);
+      this.beginInteractiveExitMonocle(window);
     }
     if (event.phase === "start") {
       this.isGrabbing = true;
       this.clearWindowSnapState(window);
     }
 
-    const maximizedMoveDrag =
-      this.maximizedMoveDrag?.windowId === window.id
-        ? this.maximizedMoveDrag
+    const monocleMoveDrag =
+      this.monocleMoveDrag?.windowId === window.id
+        ? this.monocleMoveDrag
         : null;
-    if (maximizedMoveDrag) {
-      const nextRect = this.restoreRectForMaximizedMove(
+    if (monocleMoveDrag) {
+      const nextRect = this.restoreRectForMonocleMove(
         event,
-        maximizedMoveDrag.width,
-        maximizedMoveDrag.height,
+        monocleMoveDrag.width,
+        monocleMoveDrag.height,
       );
       if (event.phase === "start") {
         playRectAnimation(
@@ -2512,7 +2436,7 @@ export class HybridWindowManager {
           WINDOW_STATE_RECT,
           nextRect,
           WINDOW_MANAGEMENT_EASING,
-          UNMAXIMIZE_GRAB_ANIMATION_DURATION,
+          MONOCLE_EXIT_GRAB_ANIMATION_DURATION,
         );
       } else {
         stopRectAnimation(window, WINDOW_STATE_RECT);
@@ -2520,11 +2444,11 @@ export class HybridWindowManager {
       }
       if (event.phase === "end") {
         this.isGrabbing = false;
-        this.maximizedMoveDrag = null;
+        this.monocleMoveDrag = null;
         this.finishFloatingDragSnap(event, workspace);
       } else if (event.phase === "cancel") {
         this.isGrabbing = false;
-        this.maximizedMoveDrag = null;
+        this.monocleMoveDrag = null;
         this.finishFloatingDragSnap(event, workspace);
       } else {
         this.updateFloatingDragSnap(event);
@@ -2562,15 +2486,15 @@ export class HybridWindowManager {
         workspace,
         lastWorkspaceSwitchAt: event.timestamp,
       };
-      if (window.state[WINDOW_STATE_MAXIMIZED]()) {
+      if (window.state[WINDOW_STATE_MONOCLE]()) {
         const restoreRect =
           window.state[WINDOW_STATE_RESTORE_RECT]() ?? event.currentRect;
-        this.maximizedMoveDrag = {
+        this.monocleMoveDrag = {
           windowId: window.id,
           width: read(restoreRect.width),
           height: read(restoreRect.height),
         };
-        this.beginInteractiveUnmaximize(window);
+        this.beginInteractiveExitMonocle(window);
       }
       this.clearWindowSnapState(window);
     }
@@ -2580,25 +2504,25 @@ export class HybridWindowManager {
       return;
     }
 
-    const maximizedMoveDrag =
-      this.maximizedMoveDrag?.windowId === window.id
-        ? this.maximizedMoveDrag
+    const monocleMoveDrag =
+      this.monocleMoveDrag?.windowId === window.id
+        ? this.monocleMoveDrag
         : null;
-    const nextRect: ManagedWindowRect = maximizedMoveDrag
-      ? this.restoreRectForMaximizedMove(
+    const nextRect: ManagedWindowRect = monocleMoveDrag
+      ? this.restoreRectForMonocleMove(
           event,
-          maximizedMoveDrag.width,
-          maximizedMoveDrag.height,
+          monocleMoveDrag.width,
+          monocleMoveDrag.height,
         )
       : event.currentRect;
 
-    if (maximizedMoveDrag && event.phase === "start") {
+    if (monocleMoveDrag && event.phase === "start") {
       playRectAnimation(
         window,
         WINDOW_STATE_RECT,
         nextRect,
         WINDOW_MANAGEMENT_EASING,
-        UNMAXIMIZE_GRAB_ANIMATION_DURATION,
+        MONOCLE_EXIT_GRAB_ANIMATION_DURATION,
       );
     } else {
       stopRectAnimation(window, WINDOW_STATE_RECT);
@@ -2635,7 +2559,7 @@ export class HybridWindowManager {
           if (event.phase === "end") {
             targetWorkspace.endTileDrag(window, false);
             this.tileDrag = null;
-            this.maximizedMoveDrag = null;
+            this.monocleMoveDrag = null;
             this.isGrabbing = false;
           }
           window.focus();
@@ -2662,8 +2586,8 @@ export class HybridWindowManager {
       }
       this.applyWorkspaceStackPolicy(drag.workspace);
       this.floatingDrag = null;
-      if (maximizedMoveDrag) {
-        this.maximizedMoveDrag = null;
+      if (monocleMoveDrag) {
+        this.monocleMoveDrag = null;
       }
       this.isGrabbing = false;
     }
@@ -2747,15 +2671,15 @@ export class HybridWindowManager {
     if (workspace?.isTiled && workspace.shouldTile(window)) {
       if (!event.maximized) {
         window.state[WINDOW_STATE_RESTORE_RECT].set(null);
-        window.state[WINDOW_STATE_MAXIMIZED].set(false);
+        window.state[WINDOW_STATE_MONOCLE].set(false);
         workspace.applyLayout();
         this.applyWorkspaceStackPolicy(workspace);
         return;
       }
 
       window.state[WINDOW_STATE_RESTORE_RECT].set(null);
-      window.state[WINDOW_STATE_MAXIMIZED].set(true);
-      workspace.focusWindow(window);
+      window.state[WINDOW_STATE_MONOCLE].set(true);
+      workspace.panToWindow(window);
       workspace.applyLayout();
       this.applyWorkspaceStackPolicy(workspace);
       window.focus();
@@ -2775,11 +2699,11 @@ export class HybridWindowManager {
         );
       }
       window.state[WINDOW_STATE_RESTORE_RECT].set(null);
-      window.state[WINDOW_STATE_MAXIMIZED].set(false);
+      window.state[WINDOW_STATE_MONOCLE].set(false);
       return;
     }
 
-    if (!window.state[WINDOW_STATE_MAXIMIZED]()) {
+    if (!window.state[WINDOW_STATE_MONOCLE]()) {
       const currentRect = window.state[WINDOW_STATE_RECT]();
       const currentWidth = read(currentRect.width);
       const currentHeight = read(currentRect.height);
@@ -2787,16 +2711,16 @@ export class HybridWindowManager {
         window.state[WINDOW_STATE_RESTORE_RECT].set(currentRect);
       }
     }
-    const maximizedRect = this.maximizedRectForWindow(window);
-    workspace?.syncFloatingWindowRect(window, maximizedRect);
+    const monocleRect = this.monocleRectForWindow(window);
+    workspace?.syncFloatingWindowRect(window, monocleRect);
     playRectAnimation(
       window,
       WINDOW_STATE_RECT,
-      maximizedRect,
+      monocleRect,
       WINDOW_MANAGEMENT_EASING,
       WINDOW_MANAGEMENT_ANIMATION_DURATION,
     );
-    window.state[WINDOW_STATE_MAXIMIZED].set(true);
+    window.state[WINDOW_STATE_MONOCLE].set(true);
     this.applyWorkspaceStackPolicy(workspace);
   }
 
@@ -2842,13 +2766,12 @@ export class HybridWindowManager {
     }
     const workspace = this.findWorkspaceForWindow(event.window);
     if (workspace) {
-      // If the window is on another workspace, switch with the same
-      // slide/fade animation as keyboard/gesture switching (no-op if same).
+      // Same slide/fade as keyboard/gesture switching; no-op if already active.
       this.switchWorkspaceTo(workspace.monitor, workspace.index, {
         focusActiveAfter: false,
       });
     }
-    // Focus the target window after switching (overrides switchWorkspaceTo's focusActiveWindow).
+    // Overrides switchWorkspaceTo's focusActiveWindow with the actual target.
     event.window.focus();
   }
 
@@ -3087,14 +3010,14 @@ export class HybridWindowManager {
     }
   }
 
-  public toggleFocusedWindowMaximize() {
+  public toggleFocusedWindowMonocle() {
     for (const workspace of this.workspaces.values()) {
       const focused = workspace.focusedWindow();
       if (!focused || !read(focused.isResizable)) {
         continue;
       }
 
-      if (focused.state[WINDOW_STATE_MAXIMIZED]()) {
+      if (focused.state[WINDOW_STATE_MONOCLE]()) {
         focused.unmaximize();
       } else {
         focused.maximize();
@@ -3121,12 +3044,7 @@ export class HybridWindowManager {
 
   public refreshUsableAreaLayouts() {
     this.syncWorkspaces();
-    // While a window is being interactively dragged, do not re-apply the
-    // usable-area layout. It would clobber the in-flight drag — most visibly,
-    // a maximized window (which stays WINDOW_STATE_MAXIMIZED during the
-    // unmaximize-grab) gets snapped back to its full rect, flashing maximized
-    // whenever a layer surface mounts/unmounts (e.g. the snap-preview overlay).
-    // The layout is re-applied by the next layout event once the drag ends.
+    // Would clobber an in-flight drag (flashes monocle on layer-surface mount).
     if (this.isGrabbing) {
       return;
     }
@@ -3145,11 +3063,7 @@ export class HybridWindowManager {
     this.switchWorkspaceTo(monitor, Math.max(1, currentIndex + direction));
   }
 
-  /**
-   * Animated switch to an explicit workspace index on a monitor. Direction is
-   * inferred from the current index so the same vertical slide/fade transition
-   * as keyboard/gesture switching plays (used by the IPC `workspaces.activate`).
-   */
+  // Direction inferred from current index so the usual slide/fade plays.
   public switchWorkspaceTo(
     monitor: string,
     targetIndex: number,
@@ -3197,9 +3111,7 @@ export class HybridWindowManager {
       toOpacity: 1,
       visibleAfter: true,
     });
-    // Callers that explicitly want to focus a *different* window after the
-    // transition (e.g. dock activation) opt out of the implicit focus so the
-    // resulting onFocus callback chain does not stomp on their pan.
+    // Lets dock activation focus its own target without stomping the pan.
     if (options.focusActiveAfter !== false) {
       toWorkspace.focusActiveWindow();
     }
@@ -3216,15 +3128,11 @@ export class HybridWindowManager {
     );
   }
 
-  /** Name (connector) of the monitor under the cursor; updated on pointer move. */
   public getCurrentMonitorName(): string {
     this.syncWorkspaces();
     return this.currentMonitor || COMPOSITOR.output.list.at(0) || "";
   }
 
-  /**
-   * Compact per-monitor workspace view for external clients (the bar) over IPC.
-   */
   public viewForIpc(): WorkspacesView {
     this.syncWorkspaces();
 
@@ -3256,9 +3164,7 @@ export class HybridWindowManager {
     const monitors: WorkspacesViewMonitor[] = COMPOSITOR.output.list.map(
       (name) => {
         const active = this.activeWorkspaceByMonitor.get(name) ?? 1;
-        // Only surface workspaces that have windows, plus the active one
-        // (which stays visible even while empty). Bare, empty, non-active
-        // workspaces are hidden from the list.
+        // Hides empty, non-active workspaces from the list.
         const workspaces = (byMonitor.get(name) ?? []).filter(
           (workspace) => workspace.windowCount > 0 || workspace.active,
         );
@@ -3279,10 +3185,6 @@ export class HybridWindowManager {
     return { currentMonitor: this.currentMonitor, monitors };
   }
 
-  /**
-   * Update MRU stamp for `windowId`. The dock uses this to pick the "most
-   * recently used" window per app for left-click focus.
-   */
   public recordFocus(windowId: string) {
     this.lastFocusedAt.set(windowId, Date.now());
   }
@@ -3318,11 +3220,6 @@ export class HybridWindowManager {
     return false;
   }
 
-  /**
-   * Find a managed window by id by scanning every workspace. Used by the
-   * `windows.activate` IPC handler to bridge bar clicks to focus + workspace
-   * switch.
-   */
   public findWindowById(windowId: string): WaylandWindow | undefined {
     for (const workspace of this.workspaces.values()) {
       const found = workspace.findWindowById(windowId);
@@ -3333,7 +3230,6 @@ export class HybridWindowManager {
     return undefined;
   }
 
-  /** Every managed window across all workspaces (debug/IPC use). */
   public listWindows(): WaylandWindow[] {
     const windows: WaylandWindow[] = [];
     for (const workspace of this.workspaces.values()) {
@@ -3342,16 +3238,7 @@ export class HybridWindowManager {
     return windows;
   }
 
-  /**
-   * Activate window by id (dock-style "go to this window"). Plays a unified
-   * sequence: unminimize → switch workspace (if different) → pan within the
-   * workspace so the target is centered → focus. Doing the pan synchronously
-   * here (instead of relying on the onFocus → focusWindow callback) gives the
-   * same in-sync animation as `Super+Ctrl+Left/Right` and guarantees a visible
-   * pan even when the target is already in the viewport.
-   *
-   * Returns true if the window existed.
-   */
+  // Synchronous pan (not onFocus) matches Super+Ctrl+Left/Right's animation.
   public activateWindowById(windowId: string): boolean {
     const window = this.findWindowById(windowId);
     if (!window) {
@@ -3371,16 +3258,11 @@ export class HybridWindowManager {
       });
     }
 
-    // Cross-workspace: switch first with the existing slide/fade. Skip the
-    // implicit focusActiveWindow — we explicitly focus the target below, and
-    // letting switchWorkspaceTo focus the previous active would queue an
-    // onFocus → focusWindow → applyLayout cycle that overrides our pan.
+    // Skips implicit focus — its onFocus cycle would override our pan below.
     this.switchWorkspaceTo(workspace.monitor, workspace.index, {
       focusActiveAfter: false,
     });
 
-    // Always pan to the target inside the workspace (force-center even if it
-    // is already on-screen). This is the "go to this window" gesture.
     if (workspace.isTiled) {
       workspace.panToWindow(window);
     }
@@ -3390,10 +3272,7 @@ export class HybridWindowManager {
     return true;
   }
 
-  /**
-   * Activate a specific workspace on a monitor (external/IPC entry point).
-   * Plays the same slide/fade transition as keyboard/gesture switching.
-   */
+  // Plays the same slide/fade transition as keyboard/gesture switching.
   public activate(monitor: string, index: number) {
     if (!monitor || index < 1) {
       return;
@@ -3405,12 +3284,12 @@ export class HybridWindowManager {
     return this.windowStack.zIndex(window);
   }
 
-  private beginInteractiveUnmaximize(window: WaylandWindow): boolean {
-    if (!window.state[WINDOW_STATE_MAXIMIZED]()) {
+  private beginInteractiveExitMonocle(window: WaylandWindow): boolean {
+    if (!window.state[WINDOW_STATE_MONOCLE]()) {
       return false;
     }
 
-    window.state[WINDOW_STATE_MAXIMIZED].set(false);
+    window.state[WINDOW_STATE_MONOCLE].set(false);
     window.state[WINDOW_STATE_RESTORE_RECT].set(null);
     this.clearWindowSnapState(window);
     window.unmaximize();
@@ -3423,9 +3302,7 @@ export class HybridWindowManager {
     }
 
     if (!workspace.isTiled) {
-      // Leaving tiling mode removes the "floating windows stay above tiles"
-      // policy. Restore normal focus-based stacking explicitly because
-      // focusing an already-focused window does not emit another focus event.
+      // Explicit raise: an already-focused window emits no new focus event.
       const focusedWindow = workspace.focusedWindow();
       if (focusedWindow && this.windowStack.has(focusedWindow)) {
         this.windowStack.raise(focusedWindow);
@@ -3483,7 +3360,7 @@ export class HybridWindowManager {
         index,
         monitor,
         this.naturalRootRect,
-        (window) => this.maximizedRectForWindow(window, monitor),
+        (window) => this.monocleRectForWindow(window, monitor),
         (monitor) => this.getActiveWorkspaceIndex(monitor),
       );
       this.workspaces.set(key, workspace);
@@ -3995,7 +3872,7 @@ export class HybridWindowManager {
     };
   }
 
-  private maximizedRectForWindow(
+  private monocleRectForWindow(
     window: WaylandWindow,
     preferredOutput?: string,
   ): ManagedWindowRect {
@@ -4021,7 +3898,7 @@ export class HybridWindowManager {
           width: usable.width,
           height: usable.height,
         },
-        MAXIMIZED_WINDOW_PADDING,
+        MONOCLE_WINDOW_PADDING,
       );
     }
     if (output?.resolution) {
@@ -4032,16 +3909,13 @@ export class HybridWindowManager {
           width: output.resolution.width / output.scale,
           height: output.resolution.height / output.scale,
         },
-        MAXIMIZED_WINDOW_PADDING,
+        MONOCLE_WINDOW_PADDING,
       );
     }
     return rect;
   }
 
-  // Fullscreen covers the entire output: unlike maximize it ignores the
-  // usable area (exclusive-zone bars) and applies no padding, so the client
-  // surface spans edge to edge. This is also what lets the tty backend
-  // collapse the frame to a single scanout-capable element.
+  // Ignores usable-area insets (unlike maximize) so tty can scanout it.
   private fullscreenRectForWindow(
     window: WaylandWindow,
     preferredOutput?: string,
@@ -4080,8 +3954,6 @@ export class HybridWindowManager {
       const restoreRect = window.state[WINDOW_STATE_FULLSCREEN_RESTORE_RECT]();
       window.state[WINDOW_STATE_FULLSCREEN].set(false);
       window.state[WINDOW_STATE_FULLSCREEN_RESTORE_RECT].set(null);
-      // A tiled window returns to its computed slot; a floating one animates
-      // back to where it was before going fullscreen.
       if (workspace?.isTiled && workspace.shouldTile(window)) {
         workspace.applyLayout();
         this.applyWorkspaceStackPolicy(workspace);
@@ -4127,21 +3999,21 @@ export class HybridWindowManager {
     window.focus();
   }
 
-  private initialRestoreRectForMaximizedWindow(
+  private initialRestoreRectForMonocleWindow(
     window: WaylandWindow,
   ): ManagedWindowRect {
-    const maximizedRect = this.maximizedRectForWindow(window);
-    const width = Math.max(1, read(maximizedRect.width) * 0.7);
-    const height = Math.max(1, read(maximizedRect.height) * 0.7);
+    const monocleRect = this.monocleRectForWindow(window);
+    const width = Math.max(1, read(monocleRect.width) * 0.7);
+    const height = Math.max(1, read(monocleRect.height) * 0.7);
     return {
-      x: read(maximizedRect.x) + (read(maximizedRect.width) - width) / 2,
-      y: read(maximizedRect.y) + (read(maximizedRect.height) - height) / 2,
+      x: read(monocleRect.x) + (read(monocleRect.width) - width) / 2,
+      y: read(monocleRect.y) + (read(monocleRect.height) - height) / 2,
       width,
       height,
     };
   }
 
-  private restoreRectForMaximizedMove(
+  private restoreRectForMonocleMove(
     event: WindowMoveEvent,
     width: number,
     height: number,
@@ -4181,12 +4053,6 @@ export class HybridWindowManager {
     return undefined;
   }
 
-  // -------------------------------------------------------------------------
-  // Snap zones (Windows-style edge snapping for floating drags + tiling drag
-  // slot preview). The bar renders the preview rect; this side decides the
-  // zone, broadcasts the preview, and applies the snap on drop.
-  // -------------------------------------------------------------------------
-
   public setSnapPreviewBroadcaster(broadcaster: SnapPreviewBroadcaster | null) {
     this.snapPreviewBroadcaster = broadcaster;
   }
@@ -4197,7 +4063,6 @@ export class HybridWindowManager {
     this.workspaceChangeBroadcaster = broadcaster;
   }
 
-  /** Full logical rect of a monitor (ignores reserved insets). */
   private monitorFullRect(monitor: string): ManagedWindowRect | null {
     const output = COMPOSITOR.output.current[monitor];
     if (!output?.resolution) {
@@ -4211,7 +4076,7 @@ export class HybridWindowManager {
     };
   }
 
-  /** Usable area inset by the maximized padding — the base for all snap rects. */
+  // Reuses monocle padding as the snap-rect inset for edge-to-edge consistency.
   private monitorSnapBaseRect(monitor: string): ManagedWindowRect | null {
     const usable =
       COMPOSITOR.layer.usableArea(monitor) ??
@@ -4219,10 +4084,9 @@ export class HybridWindowManager {
     if (!usable) {
       return null;
     }
-    return insetRect(usable, MAXIMIZED_WINDOW_PADDING);
+    return insetRect(usable, MONOCLE_WINDOW_PADDING);
   }
 
-  /** Resolve the snap zone for a pointer near the physical screen edges. */
   private floatingSnapZoneAt(
     monitor: string,
     px: number,
@@ -4246,13 +4110,12 @@ export class HybridWindowManager {
     if (nearLeft && py >= bottom - SNAP_CORNER_PX) return "bottom-left";
     if (nearRight && py <= top + SNAP_CORNER_PX) return "top-right";
     if (nearRight && py >= bottom - SNAP_CORNER_PX) return "bottom-right";
-    if (nearTop) return "maximize";
+    if (nearTop) return "monocle";
     if (nearLeft) return "left";
     if (nearRight) return "right";
     return null;
   }
 
-  /** Target rect (global logical coords) for a snap zone on a monitor. */
   private snapZoneRect(
     monitor: string,
     zone: SnapZone,
@@ -4271,7 +4134,7 @@ export class HybridWindowManager {
     const bottomY = by + halfH + SNAP_GAP_PX;
 
     switch (zone) {
-      case "maximize":
+      case "monocle":
         return { x: bx, y: by, width: bw, height: bh };
       case "left":
         return { x: bx, y: by, width: halfW, height: bh };
@@ -4360,7 +4223,7 @@ export class HybridWindowManager {
       isLayoutSnapZone(window.state[WINDOW_STATE_SNAP_ZONE]()) &&
       window.state[WINDOW_STATE_SNAP_MONITOR]() === monitor &&
       !window.state[WINDOW_STATE_MINIMIZED]() &&
-      !window.state[WINDOW_STATE_MAXIMIZED]()
+      !window.state[WINDOW_STATE_MONOCLE]()
     );
   }
 
@@ -4604,7 +4467,6 @@ export class HybridWindowManager {
     window.state[WINDOW_STATE_SNAP_MONITOR].set(null);
   }
 
-  /** Broadcast a preview rect (converted to monitor-local) or a hide (null). */
   private emitSnapPreview(
     monitor: string,
     rect: ManagedWindowRect | null,
@@ -4632,7 +4494,6 @@ export class HybridWindowManager {
     });
   }
 
-  /** Update the floating-drag snap candidate + preview during a move. */
   private updateFloatingDragSnap(event: WindowMoveEvent) {
     if (event.modifiers.shift) {
       this.clearFloatingSnapPreview();
@@ -4688,10 +4549,7 @@ export class HybridWindowManager {
     this.floatingSnap = null;
   }
 
-  /**
-   * Apply the pending snap on drop (or clear it on cancel). Returns true if the
-   * window was snapped, so the caller skips leaving it at the drop position.
-   */
+  // Returns true if snapped, so caller skips its own drop-position handling.
   private finishFloatingDragSnap(
     event: WindowMoveEvent,
     workspace: Workspace | undefined,
@@ -4715,19 +4573,15 @@ export class HybridWindowManager {
     }
 
     const window = event.window;
-    const isMaximized = window.state[WINDOW_STATE_MAXIMIZED]();
+    const isMonocle = window.state[WINDOW_STATE_MONOCLE]();
 
-    if (snap.zone === "maximize") {
+    if (snap.zone === "monocle") {
       this.clearWindowSnapState(window);
-      // Route through the real maximize so the compositor `isMaximized` state
-      // (and therefore the SSD maximize/restore icon) stays in sync. Calling
-      // maximize() fires onWindowMaximizeRequest, which applies the rect.
-      if (!isMaximized) {
+      // Real maximize() keeps the compositor's isMaximized/SSD icon in sync.
+      if (!isMonocle) {
         window.maximize();
       } else {
-        // Already maximized (e.g. re-dropped on the top edge): just re-apply
-        // the maximized rect for the monitor under the cursor.
-        const rect = this.maximizedRectForWindow(window);
+        const rect = this.monocleRectForWindow(window);
         playRectAnimation(
           window,
           WINDOW_STATE_RECT,
@@ -4738,12 +4592,10 @@ export class HybridWindowManager {
         workspace?.syncFloatingWindowRect(window, rect);
       }
     } else {
-      // Half / quarter: ensure the window is unmaximized first (syncs the SSD
-      // icon), with the restore rect cleared so unmaximize() does not animate
-      // back to it and fight the snap, then place it at the zone rect.
-      if (isMaximized) {
+      // Clear restore rect first so unmaximize() doesn't fight the snap anim.
+      if (isMonocle) {
         window.state[WINDOW_STATE_RESTORE_RECT].set(null);
-        window.state[WINDOW_STATE_MAXIMIZED].set(false);
+        window.state[WINDOW_STATE_MONOCLE].set(false);
         window.unmaximize();
       }
       playRectAnimation(

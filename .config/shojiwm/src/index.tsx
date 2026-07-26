@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   Box,
   ClientWindow,
@@ -6,18 +7,16 @@ import {
   WindowBorder,
   backdropSource,
   compileEffect,
-  compileLayerEffect,
-  dualKawaseBlur,
   type WaylandWindow,
   computed,
   shaderStage,
   loadShader,
-  layerSource,
   ManagedWindow,
   read,
   type DisplayConfigDraft,
-  compilePopupEffect,
-  popupSource,
+  signal,
+  createPoll,
+  type PollHandle,
 } from "shoji_wm";
 import type { ManagedWindowRect } from "shoji_wm/types";
 import { createIpcServer } from "shoji_wm/ipc";
@@ -27,6 +26,7 @@ import {
   WINDOW_STATE_FULLSCREEN,
   WINDOW_STATE_MINIMIZED,
   WINDOW_STATE_MINIMIZE_VISUAL_IDLE,
+  WINDOW_STATE_MONOCLE,
   WINDOW_STATE_TILE_DRAGGING,
   WINDOW_STATE_TILED,
   WINDOW_STATE_VISIBLE_OUTPUTS,
@@ -35,7 +35,40 @@ import {
   WINDOW_STATE_WORKSPACE_OFFSET_Y,
   WINDOW_STATE_WORKSPACE_OPACITY,
 } from "./window-manager";
-import { theme } from "./theme-colors";
+
+declare module "node:fs" {
+  export function readFileSync(path: string, encoding: string): string;
+}
+
+interface ThemeColors {
+  accent: string;
+  lavender: string;
+  textDim: string;
+}
+
+const THEME_FALLBACK: ThemeColors = {
+  accent: "#7B2FE8",
+  lavender: "#5E50A0",
+  textDim: "#5E50A0",
+};
+
+function readCurrentTheme(): Record<string, string> {
+  try {
+    const path = `${process.env.HOME}/.config/keqing-shell/colors.json`;
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed.current ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const currentTheme = readCurrentTheme();
+
+const theme: ThemeColors = {
+  accent: currentTheme.accent ?? THEME_FALLBACK.accent,
+  lavender: currentTheme.lavender ?? THEME_FALLBACK.lavender,
+  textDim: currentTheme.lavender ?? THEME_FALLBACK.textDim,
+};
 
 COMPOSITOR.env.apply({
   QT_QPA_PLATFORM: "wayland;xcb",
@@ -60,15 +93,12 @@ COMPOSITOR.window.decoration.configure((window, context) => {
     appId.endsWith(".firefox") ||
     appId.includes("firefoxdeveloperedition");
 
-  // The KDE manager advertises CSD before per-window metadata is available.
-  // Keep that baseline while appId is unknown: sending an early SSD response
-  // makes some Firefox/Chromium versions permanently build reduced chrome.
+  // Early SSD before appId is known permanently breaks some browsers' chrome.
   if (appId.length === 0) {
     return { mode: context.clientPreference ?? "client" };
   }
 
-  // Firefox can repeatedly renegotiate when CSD is rejected. Keep CSD even
-  // when it relies on the manager default and sends no explicit preference.
+  // Firefox renegotiates repeatedly if CSD is rejected — always keep CSD.
   if (isFirefox) {
     return { mode: "client" };
   }
@@ -80,7 +110,50 @@ const HYBRID_WINDOW_MANAGER = new HybridWindowManager(naturalRootRect);
 const HOT_RELOAD_WINDOW_MANAGER_STATE = "config.hybrid-window-manager";
 const FULLSCREEN_Z_INDEX = 2_000_000_000;
 
+const LIQUID_RIPPLE_FALLBACK_REFRESH_RATE = 120;
+const liquidRippleTime = signal(0);
+let liquidRipplePoll: PollHandle | null = null;
+let liquidRippleStartedAtMs = Date.now();
+
+const LIQUID_RIPPLE_UNIFORMS = {
+  time: liquidRippleTime,
+  wave_speed: 0.2,
+  wave_speed_x: 0.3,
+  wave_speed_y: 0.3,
+  emboss: 0.4,
+  intensity: 2.0,
+  frequency: 6.0,
+  refraction_strength: 1.5,
+  reflection_gain: 500.0,
+  reflection_cutoff: 0.012,
+  reflection_intensity: 150000.0,
+  water_tint: 0.92,
+};
+
+function maxOutputRefreshRate(): number {
+  const refreshRates = COMPOSITOR.output.outputs
+    .map((output) => output.resolution?.refreshRate)
+    .filter((r): r is number => typeof r === "number" && r > 0);
+  return refreshRates.length === 0
+    ? LIQUID_RIPPLE_FALLBACK_REFRESH_RATE
+    : Math.max(...refreshRates);
+}
+
+function restartLiquidRippleClock(): void {
+  const elapsedMs = liquidRippleTime.peek() * 1000;
+  liquidRippleStartedAtMs = Date.now() - elapsedMs;
+  liquidRipplePoll?.cancel();
+  liquidRipplePoll = createPoll(1000 / maxOutputRefreshRate(), () => {
+    liquidRippleTime.value = (Date.now() - liquidRippleStartedAtMs) / 1000;
+  });
+}
+
+restartLiquidRippleClock();
+
 COMPOSITOR.onDisable((event) => {
+  liquidRipplePoll?.cancel();
+  liquidRipplePoll = null;
+
   if (event.isReloading) {
     const snapshot = HYBRID_WINDOW_MANAGER.snapshot();
     event.persist(HOT_RELOAD_WINDOW_MANAGER_STATE, snapshot);
@@ -88,6 +161,8 @@ COMPOSITOR.onDisable((event) => {
 });
 
 COMPOSITOR.onEnable((event) => {
+  restartLiquidRippleClock();
+
   if (event.isReloading) {
     const snapshot = event.restore<
       ReturnType<typeof HYBRID_WINDOW_MANAGER.snapshot>
@@ -98,16 +173,7 @@ COMPOSITOR.onEnable((event) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// External IPC: expose the workspace layout to clients such as the bar.
-//   workspaces.get           -> WorkspacesView                     (request/response)
-//   workspaces.switch        { direction: -1 | 1 }                 (command)
-//   workspaces.activate      { monitor: string, index: number }    (command)
-//   workspaces.toggleTiling  { monitor?: string }                  (command)
-//   workspaces.changed       -> WorkspacesView                     (broadcast)
-//   windows.activate         { windowId: string }                  (command)
-//   dock.proximity           { monitor: string, inside: bool }    (broadcast)
-// ---------------------------------------------------------------------------
+// Full message table: local/shojiwm/config.md.
 const WORKSPACE_IPC = createIpcServer();
 let lastWorkspacesJson = "";
 let workspaceBroadcastQueued = false;
@@ -126,11 +192,8 @@ function reconfigureProtocolWorkspaces() {
   COMPOSITOR.workspace.reconfigure();
 }
 
-// Coalesce many state mutations within one tick into a single diffed broadcast.
 function scheduleWorkspaceBroadcast() {
-  // Protocol state must be staged before the current runtime response is
-  // written; otherwise key bindings/Waybar activations only reach external
-  // bars on a later, unrelated runtime request.
+  // Must stage before this response is written, or bar updates lag a tick.
   reconfigureProtocolWorkspaces();
   if (workspaceBroadcastQueued) {
     return;
@@ -201,17 +264,7 @@ WORKSPACE_IPC.handle("windows.activate", (params) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Dock proximity: watch the pointer and broadcast enter/leave for the bottom
-// strip of each monitor. The bar uses this in place of a layer-shell trigger
-// surface (which would otherwise capture clicks meant for the windows below).
-// ---------------------------------------------------------------------------
-// Two thresholds with hysteresis:
-//   - SHOW: pointer must be in the bottom 10px to trigger reveal
-//   - HIDE: once visible, pointer must leave the bottom 120px to dismiss
-// This gives a precise "reach for the dock" trigger while keeping the dock
-// stable once the user is interacting with it (so brushing the cursor a few
-// dozen pixels above the dock body does not flicker it away).
+// Replaces a layer-shell trigger surface, which would eat window clicks.
 const DOCK_SHOW_ZONE_PX = 10;
 const DOCK_HIDE_ZONE_PX = 120;
 const dockProximityByMonitor = new Map<string, boolean>();
@@ -248,8 +301,7 @@ function nextDockProximity(
 ): boolean {
   if (!onTrackedMonitor) return false;
   const wasInside = dockProximityByMonitor.get(monitor) === true;
-  // While outside, only the narrow show-zone counts (10px).
-  // While inside, the wide hide-zone keeps it open (120px).
+  // Hysteretic: narrow show-zone while hidden, wide hide-zone while visible.
   return pointerInBottomStrip(
     monitor,
     pointerX,
@@ -266,9 +318,7 @@ function updateDockProximity(monitor: string, inside: boolean) {
   WORKSPACE_IPC.broadcast("dock.proximity", { monitor, inside });
 }
 
-// Snap-zone preview: broadcast the active snap rect (floating edge zones, or the
-// opened tiling slot) to the bar, which renders the rounded preview overlay.
-//   snap.preview  { monitor, rect: {x,y,w,h} | null, kind: "floating"|"tiling" }
+// Bar renders the rounded snap-preview overlay from this broadcast.
 let lastSnapJson = "";
 HYBRID_WINDOW_MANAGER.setSnapPreviewBroadcaster((preview) => {
   const json = JSON.stringify(preview);
@@ -292,17 +342,6 @@ COMPOSITOR.process.once("fcitx5", {
   runPolicy: "once-per-session",
 });
 
-// GTK_A11Y=none disables the AT-SPI accessibility bridge for the bar. A status
-// bar never needs a screen reader, and GTK 4.22's accessibility relation
-// handling can melt down into a recursive notify storm (100% CPU) when a
-// GMenuModel-backed popover's model is destroyed while open — e.g. quitting an
-// app from its system-tray menu. Must be set before GTK init, hence here.
-COMPOSITOR.process.once("shell", {
-  command: "cd ~/.config/shoji-bar-2 && GTK_A11Y=none ags run app.tsx",
-  runPolicy: "once-per-session",
-});
-// cliphist clipboard history watchers. Text and image need separate watchers;
-// run as services so they are restarted if they ever exit.
 COMPOSITOR.process.service("cliphist-text", {
   command: ["wl-paste", "--type", "text", "--watch", "cliphist", "store"],
   restart: "on-exit",
@@ -372,10 +411,9 @@ COMPOSITOR.key.bind("code-keqing-dots", "Super+Shift+K", () => {
     command: ["code", `${process.env.HOME}/keqing-dots`],
   });
 });
-COMPOSITOR.key.bind("screenshot-region-save", "Super+Shift+S", () => {
+COMPOSITOR.key.bind("screenshot-region-freeze", "Super+Shift+S", () => {
   COMPOSITOR.process.spawn({
-    command:
-      "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot -m region -o $HOME/Pictures/screenshots/'",
+    command: "screenshot",
   });
 });
 
@@ -392,35 +430,6 @@ COMPOSITOR.key.bind("prev", "XF86AudioPrev", () => {
   COMPOSITOR.process.spawn({ command: "playerctl previous" });
 });
 
-// Resolve the monitor under the cursor and toggle shoji-bar-2's StartMenu via ags request.
-function toggleStartMenu() {
-  const monitor = HYBRID_WINDOW_MANAGER.getCurrentMonitorName();
-  COMPOSITOR.process.spawn({
-    command: ["ags", "request", "-i", "ags", "start-menu", "toggle", monitor],
-  });
-}
-COMPOSITOR.key.bind("start-menu", "Super+A", toggleStartMenu);
-// Super tap (fires on release only, when no other key/button was pressed in between).
-COMPOSITOR.key.bind("start-menu-tap", "Super", toggleStartMenu, {
-  on: "release",
-});
-// Toggle shoji-bar-2's clipboard history on the monitor under the cursor.
-COMPOSITOR.key.bind("clipboard", "Super+V", () => {
-  const monitor = HYBRID_WINDOW_MANAGER.getCurrentMonitorName();
-  COMPOSITOR.process.spawn({
-    command: ["ags", "request", "-i", "ags", "clipboard", "toggle", monitor],
-  });
-});
-COMPOSITOR.key.bind("screenshot", "Super+P", () => {
-  COMPOSITOR.process.spawn({
-    command: "hyprshot -m region --raw | swappy -f -",
-  });
-});
-COMPOSITOR.key.bind("screenshot-freeze", "Super+Ctrl+P", () => {
-  COMPOSITOR.process.spawn({
-    command: "hyprshot -m region --freeze --raw | swappy -f -",
-  });
-});
 COMPOSITOR.key.bind("toggle-tiling-mode", "Super+S", () => {
   HYBRID_WINDOW_MANAGER.toggleCurrentWorkspaceTiling();
   scheduleWorkspaceBroadcast();
@@ -437,8 +446,8 @@ COMPOSITOR.key.bind("tile-focus-up", "Super+Up", () => {
 COMPOSITOR.key.bind("tile-focus-down", "Super+Down", () => {
   HYBRID_WINDOW_MANAGER.focusTile(1);
 });
-COMPOSITOR.key.bind("window-maximize-toggle", "Super+F", () => {
-  HYBRID_WINDOW_MANAGER.toggleFocusedWindowMaximize();
+COMPOSITOR.key.bind("window-monocle-toggle", "Super+F", () => {
+  HYBRID_WINDOW_MANAGER.toggleFocusedWindowMonocle();
 });
 COMPOSITOR.key.bind("window-close", "Super+W", () => {
   HYBRID_WINDOW_MANAGER.closeFocusedWindow();
@@ -597,87 +606,6 @@ HYBRID_WINDOW_MANAGER.configureWorkspaceGestureSpeed({
   workspaceSwitchVelocityFactor: 1,
 });
 
-COMPOSITOR.effect.background_effect = compileEffect({
-  input: backdropSource(),
-  capturePadding: 24,
-  invalidate: { kind: "on-source-damage-box", damagePadding: 8 },
-  pipeline: [dualKawaseBlur({ radius: 4, passes: 2 })],
-});
-
-const LAYER_BLUR_MASK = compileLayerEffect({
-  input: backdropSource(),
-  capturePadding: 24,
-  invalidate: { kind: "on-source-damage-box", damagePadding: 8 },
-  // The mask stage intentionally outputs transparency (the blur is clipped
-  // to the layer's own alpha), so the pipeline's alpha must survive the
-  // finish/display passes instead of being forced opaque.
-  alpha: "preserve",
-  pipeline: [
-    dualKawaseBlur({ radius: 4, passes: 2 }),
-    shaderStage(loadShader("./src/shaders/layer-blur-mask.frag"), {
-      textures: {
-        layer_mask: layerSource(),
-      },
-      uniforms: {
-        opacity_threshold: 0.25,
-        mask_feather: 0.04,
-      },
-    }),
-  ],
-});
-
-COMPOSITOR.effect.layer = (layer) => {
-  if (layer.namespace() === "no_blur") {
-    return {};
-  }
-
-  return {
-    behind: LAYER_BLUR_MASK,
-  };
-};
-
-const POPUP_BLUR = compilePopupEffect({
-  input: backdropSource(),
-  capturePadding: 4 * 2 * 2 + 24 + 32,
-  invalidate: { kind: "on-source-damage-box", damagePadding: 8 },
-  // The mask stage intentionally outputs transparency (the blur is clipped
-  // to the layer's own alpha), so the pipeline's alpha must survive the
-  // finish/display passes instead of being forced opaque.
-  alpha: "preserve",
-  pipeline: [
-    dualKawaseBlur({ radius: 4, passes: 2 }),
-    shaderStage(loadShader("./src/shaders/layer-blur-mask.frag"), {
-      textures: {
-        layer_mask: popupSource(),
-      },
-      uniforms: {
-        opacity_threshold: 0.25,
-        mask_feather: 0.04,
-      },
-    }),
-  ],
-});
-
-COMPOSITOR.effect.popup = (popup) => {
-  if (popup.parentKind === "window") {
-    return {};
-  }
-
-  return {
-    behind: POPUP_BLUR,
-  };
-};
-
-// GTK3 tooltips (waybar) declare their whole rect opaque despite transparent
-// rounded corners, which paints the corners as a solid fill and culls the
-// behind-blur. Ignore the declaration for layer-shell popups.
-COMPOSITOR.rendering.surfacePolicy = (surface) => {
-  if (surface.kind === "popup" && surface.parentKind === "layer") {
-    return { opaqueRegion: "ignore" };
-  }
-  return null;
-};
-
 COMPOSITOR.event.onOpen((window) => {
   HYBRID_WINDOW_MANAGER.onOpen(window);
 });
@@ -708,9 +636,7 @@ COMPOSITOR.event.onFocus((window, focused) => {
 COMPOSITOR.event.onPointerMoveAsync((event) => {
   HYBRID_WINDOW_MANAGER.onPointerMove(event);
 
-  // Dock proximity: update only the monitor the pointer is currently on,
-  // and emit "leave" for other monitors that were previously inside. The
-  // narrow/wide threshold is hysteretic per current state.
+  // Also emits "leave" for other monitors that were previously inside.
   const pointerX = event.position.x;
   const pointerY = event.position.y;
   for (const monitor of COMPOSITOR.output.list) {
@@ -798,11 +724,16 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
       height: read(rect.height),
     };
   });
-  const forceRectSize = computed(
-    () => window.isResizable() && !window.isTransient(),
-  );
   const tiled = computed(
     () => window.appId() === "mpv" || window.state[WINDOW_STATE_TILED](),
+  );
+  const forceRectSize = computed(
+    () =>
+      window.isResizable() &&
+      !window.isTransient() &&
+      (tiled() ||
+        window.state[WINDOW_STATE_FULLSCREEN]() ||
+        window.state[WINDOW_STATE_MONOCLE]()),
   );
   const minimizeVisualIdle = window.state[WINDOW_STATE_MINIMIZE_VISUAL_IDLE];
   const inactive = computed(
@@ -818,15 +749,8 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     capturePadding: 24,
     invalidate: { kind: "on-source-damage-box", damagePadding: 8 },
     pipeline: [
-      dualKawaseBlur({ radius: 4, passes: 2 }),
-      shaderStage(loadShader("./src/shaders/liquid-glass.frag"), {
-        uniforms: {
-          glass_radius_px: 10.0,
-          distortion_depth: 0.2,
-          distortion_strength: 0.15,
-          chromatic_shift_px: 3.0,
-          glass_tint: 0.9,
-        },
+      shaderStage(loadShader("./src/shaders/liquid-ripple.frag"), {
+        uniforms: LIQUID_RIPPLE_UNIFORMS,
       }),
     ],
   });
@@ -843,11 +767,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     );
   }
 
-  // Fullscreen: drop all chrome (titlebar, border, rounded corners) and let
-  // the client surface fill its managed rect edge to edge. The rect is set to
-  // the whole output by onWindowFullscreenRequest. Rendering nothing but the
-  // bare ClientWindow is also what lets the tty backend promote the client
-  // buffer to the primary plane (direct scanout).
+  // Bare ClientWindow, no chrome — lets the tty backend direct-scanout it.
   if (window.state[WINDOW_STATE_FULLSCREEN]()) {
     return (
       <ManagedWindow
@@ -859,10 +779,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
         tiled={tiled}
         idle={inactive}
         interactive={inactive((value) => !value)}
-        // Permit low-latency tearing for fullscreen windows. The compositor only actually tears
-        // once the window is on the direct-scanout fast path and is committing faster than the
-        // refresh rate (i.e. games), so this is a no-op for ordinary fullscreen apps. Narrow it
-        // per app if desired, e.g. `allowTearing={isGame(window.appId())}`.
+        // No-op except direct-scanout clients committing above refresh rate.
         allowTearing={true}
       >
         <ClientWindow />
@@ -908,8 +825,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
           paddingRight: 0,
         }}
         interaction={{
-          // Zero-size hit area while tiled — tiled windows are never
-          // user-resizable, so there's no drag handle to wiggle.
+          // Tiled windows are never user-resizable.
           resizeHitArea: {
             edgePx: tiled((isTiled) => (isTiled ? 0 : 8)),
             cornerPx: tiled((isTiled) => (isTiled ? 0 : 14)),

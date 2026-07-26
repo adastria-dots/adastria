@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# Freeze the screen, let the user select a region, save it to
+# ~/Pictures/screenshots/ (creating it if needed) and copy it to the
+# clipboard. Own wrapper around grim/slurp/hyprpicker instead of hyprshot
+# so freeze + save-to-folder + region-select stay one script, one keybind.
+
+deps grim slurp hyprpicker wl-copy || exit 1
+
+save_dir="$HOME/Pictures/screenshots"
+mkdir -p "$save_dir"
+save_path="$save_dir/$(date +'%Y-%m-%d-%H%M%S')_screenshot.png"
+
+hyprpicker -r -z &
+freeze_pid=$!
+sleep 0.2
+
+# hyprpicker exits on its own Escape handler, unfreezing the background,
+# but slurp's dim overlay is a separate process still waiting on its own
+# Escape. Poll for hyprpicker dying and kill slurp too so one Escape
+# dismisses both (can't `wait` on it here, it's a sibling not a child).
+(
+  while kill -0 "$freeze_pid" 2>/dev/null; do sleep 0.1; done
+  pkill -x slurp
+) &
+watcher_pid=$!
+
+geometry=$(slurp)
+kill "$freeze_pid" "$watcher_pid" 2>/dev/null
+
+[ -n "$geometry" ] || exit 0
+
+grim -g "$geometry" "$save_path"
+wl-copy --type image/png <"$save_path"
+notify-send "Screenshot saved" "$save_path" -i "$save_path" -a screenshot-region
