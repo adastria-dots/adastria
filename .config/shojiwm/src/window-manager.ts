@@ -104,13 +104,6 @@ export function managedRectEquals(
     read(a.height) === read(b.height)
   );
 }
-export function averageOr(values: number[], fallback: number): number {
-  if (values.length === 0) {
-    return fallback;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
 function hotReloadDebugEnabled(): boolean {
   const env = (globalThis as { process?: { env?: Record<string, string> } })
     .process?.env;
@@ -237,6 +230,13 @@ export const WINDOW_STATE_SNAP_MONITOR =
   createWindowState<string | null>("snapMonitor", {
     default: null,
   });
+export const WINDOW_STATE_URGENT = createWindowState<boolean>("urgent", {
+  default: false,
+});
+export const WINDOW_STATE_MANUAL_FLOAT = createWindowState<boolean>(
+  "manualFloat",
+  { default: false },
+);
 export const OPEN_CLOSE_ANIMATION_DURATION = seconds(0.22);
 export const WINDOW_MANAGEMENT_ANIMATION_DURATION = seconds(0.2);
 export const MONOCLE_EXIT_GRAB_ANIMATION_DURATION = 90;
@@ -263,6 +263,7 @@ export const TILE_DRAG_WORKSPACE_SWITCH_INTERVAL_MS = 420;
 // Also used between tile and screen edge, so both gaps stay consistent.
 export const TILE_GAP = 20;
 export const TILE_MAX_COLUMNS = 2;
+export const WORKSPACES_PER_MONITOR = 10;
 export const TILE_MIN_WIDTH = 240;
 export const SNAP_EDGE_PX = 16;
 export const SNAP_CORNER_PX = 140;
@@ -291,7 +292,6 @@ export interface HybridWindowManagerSnapshot {
 export interface WorkspaceSnapshot {
   monitor: string;
   index: number;
-  isTiled: boolean;
   activeWindowId: string | null;
   scrollOffset: number;
   windows: WorkspaceWindowSnapshot[];
@@ -310,13 +310,14 @@ export interface WorkspacesViewWindow {
   appId?: string;
   title: string;
   focused: boolean;
+  urgent: boolean;
   lastFocusedAt: number;
+  rect: ManagedWindowRect;
 }
 
 export interface WorkspacesViewWorkspace {
   index: number;
   windowCount: number;
-  isTiled: boolean;
   active: boolean;
   windows: WorkspacesViewWindow[];
 }
@@ -325,6 +326,7 @@ export interface WorkspacesViewMonitor {
   name: string;
   active: number;
   workspaces: WorkspacesViewWorkspace[];
+  rect: ManagedWindowRect | null;
 }
 
 export interface WorkspacesView {
@@ -380,11 +382,6 @@ export const MONOCLE_WINDOW_PADDING = {
 export type LayoutSnapZone = Exclude<SnapZone, "monocle">;
 type SnapColumn = "left" | "right";
 
-export interface FloatingSnapLayout {
-  splitX: number;
-  leftSplitY: number;
-  rightSplitY: number;
-}
 export function isLayoutSnapZone(zone: SnapZone | null): zone is LayoutSnapZone {
   return zone !== null && zone !== "monocle";
 }
@@ -595,7 +592,6 @@ export class Workspace {
   private kineticScrollPoll: PollHandle | null = null;
   private kineticScrollToken = 0;
   public monitor: string;
-  public isTiled = true;
 
   public constructor(
     index: number,
@@ -611,32 +607,6 @@ export class Workspace {
     this.activeWorkspaceIndex = activeWorkspaceIndex;
   }
 
-  public moveToMonitor(monitor: string, index: number) {
-    this.monitor = monitor;
-    this.index = index;
-    for (const window of this.windows) {
-      this.syncWindowVisibleOutputs(window);
-      if (window.state[WINDOW_STATE_FULLSCREEN]()) {
-        window.state[WINDOW_STATE_RECT].set(this.fullscreenRootRect(window));
-        continue;
-      }
-      if (window.state[WINDOW_STATE_MONOCLE]()) {
-        window.state[WINDOW_STATE_RECT].set(this.monocleRootRect(window));
-        continue;
-      }
-
-      if (!this.isTiled || !this.shouldTile(window)) {
-        const rect = this.clampRectToViewport(
-          window.state[WINDOW_STATE_RECT](),
-        );
-        window.state[WINDOW_STATE_RECT].set(rect);
-        window.state[WINDOW_STATE_FLOATING_RECT].set(
-          this.isTiled ? this.viewportRectToFloatingContentRect(rect) : null,
-        );
-      }
-    }
-  }
-
   public addWindow(window: WaylandWindow): boolean {
     if (this.windows.map((window) => window.id).includes(window.id)) {
       hotReloadDebug("workspace-add-existing-skip", {
@@ -649,7 +619,7 @@ export class Workspace {
     }
     this.windows.push(window);
     const restored = this.restoredWindowStateById.get(window.id);
-    const isTileableInCurrentMode = !this.isTiled || this.shouldTile(window);
+    const isTileableInCurrentMode = this.shouldTile(window);
     if (!restored && isTileableInCurrentMode) {
       this.activeWindowId = window.id;
     }
@@ -685,9 +655,7 @@ export class Workspace {
       return restored !== undefined;
     }
 
-    if (restored?.floatingRect && !this.isTiled) {
-      window.state[WINDOW_STATE_RECT].set(restored.floatingRect);
-    } else if (this.isTiled && this.shouldTile(window)) {
+    if (this.shouldTile(window)) {
       const initialRect = this.centeredFloatingRect(window);
       window.state[WINDOW_STATE_FLOATING_RECT].set(
         restored?.floatingRect ?? initialRect,
@@ -698,7 +666,7 @@ export class Workspace {
         animate: restored === undefined,
         preserveMissingActive: restored !== undefined,
       });
-    } else if (this.isTiled) {
+    } else {
       const initialRect = this.centeredFloatingRect(window);
       const contentRect =
         restored?.floatingRect ??
@@ -707,15 +675,12 @@ export class Workspace {
       window.state[WINDOW_STATE_RECT].set(
         this.floatingContentRectToViewportRect(contentRect),
       );
-    } else {
-      window.state[WINDOW_STATE_RECT].set(this.centeredFloatingRect(window));
     }
     hotReloadDebug("workspace-add-window", {
       monitor: this.monitor,
       index: this.index,
       windowId: window.id,
       restored: restored !== undefined,
-      isTiledWorkspace: this.isTiled,
       shouldTile: this.shouldTile(window),
       activeWindowId: this.activeWindowId,
       windowIds: this.windows.map((window) => window.id),
@@ -789,10 +754,6 @@ export class Workspace {
   }
 
   public moveFocusedTile(direction: -1 | 1): boolean {
-    if (!this.isTiled) {
-      return false;
-    }
-
     const focused = this.focusedWindow();
     if (!focused || !this.shouldTile(focused)) {
       return false;
@@ -857,29 +818,18 @@ export class Workspace {
       return;
     }
 
-    if (this.isTiled) {
-      const nextViewportRect = this.tileViewportRect();
-      if (
-        this.lastAppliedTileViewportRect &&
-        managedRectEquals(this.lastAppliedTileViewportRect, nextViewportRect)
-      ) {
-        return;
-      }
-      this.applyLayout({
-        suppressSSDRebuild: false,
-        animate: false,
-        preserveMissingActive: true,
-      });
+    const nextViewportRect = this.tileViewportRect();
+    if (
+      this.lastAppliedTileViewportRect &&
+      managedRectEquals(this.lastAppliedTileViewportRect, nextViewportRect)
+    ) {
       return;
     }
-
-    for (const window of this.windows) {
-      if (!window.state[WINDOW_STATE_MONOCLE]()) {
-        continue;
-      }
-      stopRectAnimation(window, WINDOW_STATE_RECT);
-      window.state[WINDOW_STATE_RECT].set(this.monocleRootRect(window));
-    }
+    this.applyLayout({
+      suppressSSDRebuild: false,
+      animate: false,
+      preserveMissingActive: true,
+    });
   }
 
   public setVisible(visible: boolean) {
@@ -980,88 +930,7 @@ export class Workspace {
     );
   }
 
-  public setTiled(tiled: boolean) {
-    if (this.isTiled === tiled) {
-      return;
-    }
-
-    this.stopKineticScroll();
-
-    const focusedWindow = this.focusedWindow();
-    const focusedTileableWindow =
-      focusedWindow &&
-      this.shouldTile(focusedWindow) &&
-      !focusedWindow.state[WINDOW_STATE_MINIMIZED]()
-        ? focusedWindow
-        : undefined;
-    this.isTiled = tiled;
-    if (tiled) {
-      this.scrollOffset = 0;
-      for (const window of this.windows) {
-        this.syncWindowVisibleOutputs(window);
-      }
-      for (const window of this.tileableWindows()) {
-        this.captureFloatingRect(window);
-      }
-      for (const window of this.floatingWindows()) {
-        this.captureFloatingRect(window);
-      }
-      const tileable = this.tileableWindows();
-      const previousActiveWindow = this.activeWindow(tileable);
-      this.activeWindowId =
-        (focusedTileableWindow ?? previousActiveWindow ?? tileable.at(0))?.id ??
-        null;
-      if (focusedTileableWindow) {
-        this.scrollToWindow(focusedTileableWindow);
-      }
-      this.applyLayout();
-      focusedTileableWindow?.focus();
-      return;
-    }
-
-    for (const window of this.windows) {
-      // FLOATING_RECT may be degenerate (e.g. Chrome starts maximized).
-      if (window.state[WINDOW_STATE_MONOCLE]()) {
-        playRectAnimation(
-          window,
-          WINDOW_STATE_RECT,
-          this.monocleRootRect(window),
-          WINDOW_MANAGEMENT_EASING,
-          WINDOW_MANAGEMENT_ANIMATION_DURATION,
-          MANAGED_WINDOW_ONLY_ANIMATION,
-        );
-        window.state[WINDOW_STATE_FLOATING_RECT].set(null);
-        this.syncWindowVisibleOutputs(window);
-        continue;
-      }
-      const rect = window.state[WINDOW_STATE_FLOATING_RECT]();
-      if (rect) {
-        const viewportRect = this.shouldTile(window)
-          ? rect
-          : this.floatingContentRectToViewportRect(rect);
-        playRectAnimation(
-          window,
-          WINDOW_STATE_RECT,
-          viewportRect,
-          WINDOW_MANAGEMENT_EASING,
-          WINDOW_MANAGEMENT_ANIMATION_DURATION,
-          MANAGED_WINDOW_ONLY_ANIMATION,
-        );
-      }
-      window.state[WINDOW_STATE_FLOATING_RECT].set(null);
-      this.syncWindowVisibleOutputs(window);
-    }
-    if (focusedTileableWindow) {
-      this.activeWindowId = focusedTileableWindow.id;
-      focusedTileableWindow.focus();
-    }
-  }
-
   public applyLayout(options: LayoutOptions = {}) {
-    if (!this.isTiled) {
-      return;
-    }
-
     const tileable = this.tileableWindows();
     const animate = options.animate ?? true;
     const suppressSSDRebuild = options.suppressSSDRebuild ?? true;
@@ -1209,7 +1078,7 @@ export class Workspace {
     this.syncWindowVisibleOutputs(window);
     resetWorkspaceVisualState(window, visible);
     window.state[WINDOW_STATE_FLOATING_RECT].set(
-      this.isTiled ? this.viewportRectToFloatingContentRect(rect) : rect,
+      this.viewportRectToFloatingContentRect(rect),
     );
     stopRectAnimation(window, WINDOW_STATE_RECT);
     window.state[WINDOW_STATE_RECT].set(rect);
@@ -1267,9 +1136,6 @@ export class Workspace {
 
   // Unlike scrollToWindow, force-centers even if already visible ("go to").
   public panToWindow(window: WaylandWindow) {
-    if (!this.isTiled) {
-      return;
-    }
     if (!this.shouldTile(window)) {
       return;
     }
@@ -1280,7 +1146,6 @@ export class Workspace {
 
   public focusWindowUnderPointer(window: WaylandWindow): WaylandWindow | undefined {
     if (
-      !this.isTiled ||
       !this.hasWindow(window) ||
       window.state[WINDOW_STATE_MINIMIZED]()
     ) {
@@ -1342,10 +1207,6 @@ export class Workspace {
   }
 
   private reapplyStaticManagedLayout(): void {
-    if (!this.isTiled) {
-      return;
-    }
-
     const tileable = this.tileableWindows();
     if (tileable.length === 0) {
       return;
@@ -1374,7 +1235,7 @@ export class Workspace {
       cancelRectAnimations?: boolean;
     } = {},
   ): boolean {
-    if (!this.isTiled || deltaX === 0) {
+    if (deltaX === 0) {
       return false;
     }
     if (options.stopKinetic !== false) {
@@ -1412,10 +1273,7 @@ export class Workspace {
     onFrame?: () => void,
   ): void {
     this.stopKineticScroll();
-    if (
-      !this.isTiled ||
-      Math.abs(initialVelocityX) < WORKSPACE_KINETIC_SCROLL_MIN_VELOCITY
-    ) {
+    if (Math.abs(initialVelocityX) < WORKSPACE_KINETIC_SCROLL_MIN_VELOCITY) {
       return;
     }
 
@@ -1460,7 +1318,7 @@ export class Workspace {
     this.kineticScrollPoll = createManagedPoll(
       intervalMs,
       (handle) => {
-        if (this.kineticScrollToken !== token || !this.isTiled) {
+        if (this.kineticScrollToken !== token) {
           handle.cancel();
           if (this.kineticScrollPoll === handle) {
             this.kineticScrollPoll = null;
@@ -1551,14 +1409,17 @@ export class Workspace {
   }
 
   public shouldTile(window: WaylandWindow): boolean {
-    return window.isResizable() && !window.isTransient();
+    return (
+      window.isResizable() &&
+      !window.isTransient() &&
+      !window.state[WINDOW_STATE_MANUAL_FLOAT]()
+    );
   }
 
   public snapshot(): WorkspaceSnapshot {
     return {
       monitor: this.monitor,
       index: this.index,
-      isTiled: this.isTiled,
       activeWindowId: this.activeWindowId,
       scrollOffset: this.scrollOffset,
       windows: this.windows.map((window) => this.snapshotWindow(window)),
@@ -1566,7 +1427,6 @@ export class Workspace {
   }
 
   public restore(snapshot: WorkspaceSnapshot) {
-    this.isTiled = snapshot.isTiled;
     this.activeWindowId = snapshot.activeWindowId;
     this.scrollOffset = snapshot.scrollOffset;
     this.restoredWindowStateById.clear();
@@ -1576,7 +1436,6 @@ export class Workspace {
     hotReloadDebug("workspace-restore", {
       monitor: this.monitor,
       index: this.index,
-      isTiled: this.isTiled,
       activeWindowId: this.activeWindowId,
       scrollOffset: this.scrollOffset,
       restoredWindowIds: Array.from(this.restoredWindowStateById.keys()),
@@ -1599,10 +1458,8 @@ export class Workspace {
   }
 
   private syncWindowVisibleOutputs(window: WaylandWindow) {
-    window.state[WINDOW_STATE_TILED].set(this.isTiled && this.shouldTile(window));
-    window.state[WINDOW_STATE_VISIBLE_OUTPUTS].set(
-      this.isTiled ? [this.monitor] : null,
-    );
+    window.state[WINDOW_STATE_TILED].set(this.shouldTile(window));
+    window.state[WINDOW_STATE_VISIBLE_OUTPUTS].set([this.monitor]);
   }
 
   private canSuppressLayoutSSDRebuild(_tileable: WaylandWindow[]): boolean {
@@ -1625,10 +1482,6 @@ export class Workspace {
     window: WaylandWindow,
     viewportRect: ManagedWindowRect,
   ) {
-    if (!this.isTiled) {
-      window.state[WINDOW_STATE_FLOATING_RECT].set(viewportRect);
-      return;
-    }
     if (this.shouldTile(window)) {
       return;
     }
@@ -1698,11 +1551,9 @@ export class Workspace {
 
   private captureFloatingRect(window: WaylandWindow) {
     if (!window.state[WINDOW_STATE_FLOATING_RECT]()) {
-      const rect = this.isTiled
-        ? this.viewportRectToFloatingContentRect(
-            window.state[WINDOW_STATE_RECT](),
-          )
-        : window.state[WINDOW_STATE_RECT]();
+      const rect = this.viewportRectToFloatingContentRect(
+        window.state[WINDOW_STATE_RECT](),
+      );
       window.state[WINDOW_STATE_FLOATING_RECT].set(rect);
     }
   }
@@ -2159,53 +2010,26 @@ export class HybridWindowManager {
       return;
     }
 
+    // Workspace slots persist forever, keyed by connector name (Hyprland-style
+    // persistent workspaces) — never deleted on disconnect, so a returning
+    // monitor just picks its 10 slots back up untouched. Only the windows on
+    // them need to move somewhere usable while the monitor is offline.
     const orphanedWorkspaces = Array.from(this.workspaces.values()).filter(
-      (workspace) => !liveMonitors.has(workspace.monitor),
+      (workspace) =>
+        !liveMonitors.has(workspace.monitor) && workspace.windowCount() > 0,
     );
-    if (orphanedWorkspaces.length === 0) {
-      this.syncWorkspaces();
-      this.refreshUsableAreaLayouts();
-      return;
-    }
-
-    const orphanedActiveWorkspaceByMonitor = new Map(
-      Array.from(this.activeWorkspaceByMonitor.entries()).filter(
-        ([monitor]) => !liveMonitors.has(monitor),
-      ),
-    );
-
-    for (const monitor of Array.from(this.activeWorkspaceByMonitor.keys())) {
-      if (!liveMonitors.has(monitor)) {
-        this.activeWorkspaceByMonitor.delete(monitor);
+    if (orphanedWorkspaces.length > 0) {
+      const fallbackWorkspace = this.workspaceForMonitor(fallbackMonitor)!;
+      for (const workspace of orphanedWorkspaces) {
+        for (const window of workspace.allWindows().slice()) {
+          const taken = workspace.takeWindowForMove(window);
+          if (taken) {
+            fallbackWorkspace.addMovedWindow(window, taken.snapshot);
+          }
+        }
       }
-    }
-
-    for (const workspace of orphanedWorkspaces) {
-      const oldKey = workspaceKey(workspace.monitor, workspace.index);
-      this.workspaces.delete(oldKey);
-
-      if (workspace.windowCount() === 0) {
-        continue;
-      }
-
-      const targetMonitor = fallbackMonitor;
-      const targetIndex = this.availableWorkspaceIndex(
-        targetMonitor,
-        workspace.index,
-      );
-      const wasActiveOnRemovedMonitor =
-        orphanedActiveWorkspaceByMonitor.get(workspace.monitor) ===
-        workspace.index;
-      workspace.moveToMonitor(targetMonitor, targetIndex);
-      this.workspaces.set(workspaceKey(targetMonitor, targetIndex), workspace);
-      if (
-        wasActiveOnRemovedMonitor ||
-        !this.activeWorkspaceByMonitor.has(targetMonitor)
-      ) {
-        this.activeWorkspaceByMonitor.set(targetMonitor, targetIndex);
-      }
-      workspace.setVisible(workspace.isActive());
-      workspace.applyLayout({
+      this.applyWorkspaceStackPolicy(fallbackWorkspace);
+      fallbackWorkspace.applyLayout({
         suppressSSDRebuild: false,
         animate: false,
         preserveMissingActive: true,
@@ -2243,7 +2067,6 @@ export class HybridWindowManager {
       workspaces: snapshot.workspaces.map((workspace) => ({
         monitor: workspace.monitor,
         index: workspace.index,
-        isTiled: workspace.isTiled,
         activeWindowId: workspace.activeWindowId,
         windowIds: workspace.windows.map((window) => window.id),
       })),
@@ -2258,7 +2081,6 @@ export class HybridWindowManager {
       workspaces: snapshot.workspaces.map((workspace) => ({
         monitor: workspace.monitor,
         index: workspace.index,
-        isTiled: workspace.isTiled,
         activeWindowId: workspace.activeWindowId,
         windowIds: workspace.windows.map((window) => window.id),
       })),
@@ -2287,13 +2109,10 @@ export class HybridWindowManager {
     let restoredExistingWindow = false;
     const workspace =
       this.findWorkspaceRestoringWindow(window) ?? this.getCurrentWorkspace();
+    const willTile = Boolean(workspace?.shouldTile(window));
     if (workspace) {
       restoredExistingWindow = workspace.addWindow(window);
-      if (
-        !restoredExistingWindow &&
-        workspace.isTiled &&
-        workspace.shouldTile(window)
-      ) {
+      if (!restoredExistingWindow && willTile) {
         this.trackPendingInitialFocus(window);
       }
       this.applyWorkspaceStackPolicy(workspace);
@@ -2302,13 +2121,6 @@ export class HybridWindowManager {
       window.state[WINDOW_STATE_RECT].set(this.naturalRootRect(window));
     }
 
-    if (window.isMaximized()) {
-      window.state[WINDOW_STATE_RESTORE_RECT].set(
-        this.initialRestoreRectForMonocleWindow(window),
-      );
-      window.state[WINDOW_STATE_RECT].set(this.monocleRectForWindow(window));
-      window.state[WINDOW_STATE_MONOCLE].set(true);
-    }
     if (!restoredExistingWindow) {
       scheduleOpenAnimation(window);
     }
@@ -2351,13 +2163,14 @@ export class HybridWindowManager {
 
   public onFocus(window: WaylandWindow, focused: boolean) {
     if (focused) {
+      window.state[WINDOW_STATE_URGENT].set(false);
       this.windowStack.raise(window);
       const workspace = this.findWorkspaceForWindow(window);
       if (this.shouldDeferFocusLayoutForInitialOpen(window, workspace)) {
         this.applyWorkspaceStackPolicy(workspace);
         return;
       }
-      if (workspace?.isTiled && workspace.isActive()) {
+      if (workspace?.isActive()) {
         workspace.focusWindow(window);
         this.applyWorkspaceStackPolicy(workspace);
       }
@@ -2374,17 +2187,12 @@ export class HybridWindowManager {
       this.beginInteractiveExitMonocle(event.window);
     }
 
-    if (workspace?.isTiled && workspace.shouldTile(event.window)) {
+    if (workspace?.shouldTile(event.window)) {
       // Tiled windows have fixed column widths — resize requests are a no-op.
       return;
     }
 
     const nextRect = this.constrainResizeRect(event);
-    if (workspace && this.resizeFloatingSnapLayout(event, workspace, nextRect)) {
-      this.applyWorkspaceStackPolicy(workspace);
-      return;
-    }
-
     stopRectAnimation(event.window, WINDOW_STATE_RECT);
     event.window.state[WINDOW_STATE_RECT].set(nextRect);
     workspace?.syncFloatingWindowRect(event.window, nextRect);
@@ -2393,7 +2201,7 @@ export class HybridWindowManager {
 
   public onWindowMove(event: WindowMoveEvent) {
     const workspace = this.findWorkspaceForWindow(event.window);
-    if (workspace?.isTiled && workspace.shouldTile(event.window)) {
+    if (workspace?.shouldTile(event.window)) {
       this.onTileWindowMove(event, workspace);
       this.applyWorkspaceStackPolicy(workspace);
       return;
@@ -2534,7 +2342,7 @@ export class HybridWindowManager {
       if (targetWorkspace !== drag.workspace) {
         drag.workspace.removeFloatingWindow(window);
         drag.workspace.applyLayout();
-        if (targetWorkspace.isTiled && targetWorkspace.shouldTile(window)) {
+        if (targetWorkspace.shouldTile(window)) {
           this.clearFloatingSnapPreview();
           targetWorkspace.adoptTileDragWindow(window, nextRect);
           drag.workspace = targetWorkspace;
@@ -2627,7 +2435,7 @@ export class HybridWindowManager {
       this.emitSnapPreview(drag.workspace.monitor, null, "tiling");
       drag.workspace.removeTileDragWindow(window);
       drag.workspace.applyLayout();
-      if (!targetWorkspace.isTiled || !targetWorkspace.shouldTile(window)) {
+      if (!targetWorkspace.shouldTile(window)) {
         window.state[WINDOW_STATE_TILE_DRAGGING].set(false);
         targetWorkspace.adoptFloatingWindow(window, event.currentRect);
         this.tileDrag = null;
@@ -2668,7 +2476,7 @@ export class HybridWindowManager {
     window.state[WINDOW_STATE_MINIMIZED].set(false);
     this.clearWindowSnapState(window);
 
-    if (workspace?.isTiled && workspace.shouldTile(window)) {
+    if (workspace?.shouldTile(window)) {
       if (!event.maximized) {
         window.state[WINDOW_STATE_RESTORE_RECT].set(null);
         window.state[WINDOW_STATE_MONOCLE].set(false);
@@ -2739,7 +2547,7 @@ export class HybridWindowManager {
       markWindowCompositionDirty(event.window);
       scheduleMinimizeAnimation(event.window, event.minimized);
     }
-    if (workspace?.isTiled) {
+    if (workspace) {
       if (!event.minimized && workspace.shouldTile(event.window)) {
         workspace.focusWindow(event.window);
       } else {
@@ -2750,6 +2558,17 @@ export class HybridWindowManager {
   }
 
   public onWindowActivateRequest(event: WindowActivateRequestEvent) {
+    const workspaceForUrgency = this.findWorkspaceForWindow(event.window);
+    if (
+      event.source === "xdg-activation" &&
+      !event.window.isFocused() &&
+      !(workspaceForUrgency?.isActive() ?? false)
+    ) {
+      // A background app asked for attention rather than the user driving
+      // this — flag it instead of stealing focus out from under them.
+      event.window.state[WINDOW_STATE_URGENT].set(true);
+      return;
+    }
     const wasMinimized = event.window.state[WINDOW_STATE_MINIMIZED]();
     if (wasMinimized) {
       this.onWindowMinimizeRequest({
@@ -2775,33 +2594,10 @@ export class HybridWindowManager {
     event.window.focus();
   }
 
-  public toggleCurrentWorkspaceTiling() {
-    withManagedWindowOnlySSDRebuildSuppressed(() => {
-      const workspace = this.getCurrentWorkspace();
-      if (!workspace) {
-        return;
-      }
-      workspace.setTiled(!workspace.isTiled);
-      this.applyWorkspaceStackPolicy(workspace);
-    });
-  }
-
-  public toggleWorkspaceTilingForMonitor(monitor: string) {
-    withManagedWindowOnlySSDRebuildSuppressed(() => {
-      this.syncWorkspaces();
-      const workspace = this.workspaceForMonitor(monitor);
-      if (!workspace) {
-        return;
-      }
-      workspace.setTiled(!workspace.isTiled);
-      this.applyWorkspaceStackPolicy(workspace);
-    });
-  }
-
   public focusTile(direction: -1 | 1) {
     withManagedWindowOnlySSDRebuildSuppressed(() => {
       const workspace = this.getCurrentWorkspace();
-      if (!workspace?.isTiled) {
+      if (!workspace) {
         return;
       }
       workspace.focusRelative(direction);
@@ -2812,7 +2608,7 @@ export class HybridWindowManager {
   public moveFocusedTile(direction: -1 | 1) {
     withManagedWindowOnlySSDRebuildSuppressed(() => {
       const workspace = this.getCurrentWorkspace();
-      if (!workspace?.isTiled) {
+      if (!workspace) {
         return;
       }
       if (!workspace.moveFocusedTile(direction)) {
@@ -2853,9 +2649,7 @@ export class HybridWindowManager {
         focusActiveAfter: false,
       });
     }
-    if (targetWorkspace.isTiled) {
-      targetWorkspace.panToWindow(window);
-    }
+    targetWorkspace.panToWindow(window);
     if (follow) {
       window.focus();
     }
@@ -2917,9 +2711,7 @@ export class HybridWindowManager {
       this.switchWorkspaceTo(targetMonitor, targetIndex, {
         focusActiveAfter: false,
       });
-      if (targetWorkspace.isTiled) {
-        targetWorkspace.panToWindow(window);
-      }
+      targetWorkspace.panToWindow(window);
       window.focus();
       this.applyWorkspaceStackPolicy(fromWorkspace);
       this.applyWorkspaceStackPolicy(targetWorkspace);
@@ -3000,12 +2792,54 @@ export class HybridWindowManager {
     });
   }
 
+  public moveWorkspaceInto(monitor: string, targetIndex: number) {
+    withManagedWindowOnlySSDRebuildSuppressed(() => {
+      this.syncWorkspaces();
+      const currentIndex = this.activeWorkspaceByMonitor.get(monitor) ?? 1;
+      if (currentIndex === targetIndex) {
+        return;
+      }
+
+      const fromWorkspace = this.ensureWorkspace(monitor, currentIndex);
+      const toWorkspace = this.ensureWorkspace(monitor, targetIndex);
+
+      const moved = fromWorkspace.allWindows().map((window) => ({
+        window,
+        taken: fromWorkspace.takeWindowForMove(window)!,
+      }));
+      for (const { window, taken } of moved) {
+        toWorkspace.addMovedWindow(window, taken.snapshot);
+      }
+
+      fromWorkspace.applyLayout();
+      toWorkspace.applyLayout();
+      this.switchWorkspaceTo(monitor, targetIndex);
+      this.applyWorkspaceStackPolicy(fromWorkspace);
+      this.applyWorkspaceStackPolicy(toWorkspace);
+      this.syncWorkspaceVisibility();
+    });
+  }
+
   public closeFocusedWindow() {
     for (const workspace of this.workspaces.values()) {
       const focused = workspace.focusedWindow();
       if (focused) {
         focused.close();
         return;
+      }
+    }
+  }
+
+  public closeCurrentWorkspaceWindows() {
+    for (const window of this.getCurrentWorkspace()?.listWindows() ?? []) {
+      window.close();
+    }
+  }
+
+  public closeAllWindows() {
+    for (const workspace of this.workspaces.values()) {
+      for (const window of workspace.listWindows()) {
+        window.close();
       }
     }
   }
@@ -3038,6 +2872,22 @@ export class HybridWindowManager {
       } else {
         focused.fullscreen();
       }
+      return;
+    }
+  }
+
+  public toggleFocusedWindowFloating() {
+    for (const workspace of this.workspaces.values()) {
+      const focused = workspace.focusedWindow();
+      if (!focused || !read(focused.isResizable) || focused.isTransient()) {
+        continue;
+      }
+
+      focused.state[WINDOW_STATE_MANUAL_FLOAT].set(
+        !focused.state[WINDOW_STATE_MANUAL_FLOAT](),
+      );
+      workspace.applyLayout();
+      this.applyWorkspaceStackPolicy(workspace);
       return;
     }
   }
@@ -3149,12 +2999,13 @@ export class HybridWindowManager {
           appId: window.appId(),
           title: window.title(),
           focused: window.isFocused(),
+          urgent: window.state[WINDOW_STATE_URGENT](),
           lastFocusedAt: this.lastFocusedAt.get(window.id) ?? 0,
+          rect: window.state[WINDOW_STATE_RECT](),
         }));
       list.push({
         index: workspace.index,
         windowCount: workspace.windowCount(),
-        isTiled: workspace.isTiled,
         active,
         windows,
       });
@@ -3164,21 +3015,11 @@ export class HybridWindowManager {
     const monitors: WorkspacesViewMonitor[] = COMPOSITOR.output.list.map(
       (name) => {
         const active = this.activeWorkspaceByMonitor.get(name) ?? 1;
-        // Hides empty, non-active workspaces from the list.
-        const workspaces = (byMonitor.get(name) ?? []).filter(
-          (workspace) => workspace.windowCount > 0 || workspace.active,
-        );
-        if (!workspaces.some((workspace) => workspace.index === active)) {
-          workspaces.push({
-            index: active,
-            windowCount: 0,
-            isTiled: false,
-            active: true,
-            windows: [],
-          });
-        }
+        // All WORKSPACES_PER_MONITOR slots are persistent — show every one,
+        // empty or not (Hyprland-style workspace dots).
+        const workspaces = (byMonitor.get(name) ?? []).slice();
         workspaces.sort((a, b) => a.index - b.index);
-        return { name, active, workspaces };
+        return { name, active, workspaces, rect: this.monitorFullRect(name) };
       },
     );
 
@@ -3203,7 +3044,7 @@ export class HybridWindowManager {
     window: WaylandWindow,
     workspace: Workspace | undefined,
   ): boolean {
-    if (!workspace?.isTiled || !workspace.isActive()) {
+    if (!workspace?.isActive()) {
       return false;
     }
     if (this.pendingInitialFocusByWindowId.delete(window.id)) {
@@ -3263,9 +3104,7 @@ export class HybridWindowManager {
       focusActiveAfter: false,
     });
 
-    if (workspace.isTiled) {
-      workspace.panToWindow(window);
-    }
+    workspace.panToWindow(window);
 
     // Focus last so it overrides switchWorkspaceTo's focusActiveWindow().
     window.focus();
@@ -3301,15 +3140,6 @@ export class HybridWindowManager {
       return;
     }
 
-    if (!workspace.isTiled) {
-      // Explicit raise: an already-focused window emits no new focus event.
-      const focusedWindow = workspace.focusedWindow();
-      if (focusedWindow && this.windowStack.has(focusedWindow)) {
-        this.windowStack.raise(focusedWindow);
-      }
-      return;
-    }
-
     const floating = workspace
       .floatingWindows()
       .filter((window) => this.windowStack.has(window))
@@ -3328,10 +3158,9 @@ export class HybridWindowManager {
       if (!this.activeWorkspaceByMonitor.has(monitor)) {
         this.activeWorkspaceByMonitor.set(monitor, 1);
       }
-      this.ensureWorkspace(
-        monitor,
-        this.activeWorkspaceByMonitor.get(monitor) ?? 1,
-      );
+      for (let index = 1; index <= WORKSPACES_PER_MONITOR; index += 1) {
+        this.ensureWorkspace(monitor, index);
+      }
     }
 
     if (
@@ -3407,7 +3236,7 @@ export class HybridWindowManager {
   private updateWorkspaceScrollGesture(event: GestureSwipeEvent) {
     const monitor = this.gestureMonitor(event);
     const workspace = this.workspaceForMonitor(monitor);
-    if (!workspace?.isTiled) {
+    if (!workspace) {
       return;
     }
 
@@ -3438,7 +3267,7 @@ export class HybridWindowManager {
 
     const monitor = this.gestureMonitor(event);
     const workspace = this.workspaceForMonitor(monitor);
-    if (!workspace?.isTiled) {
+    if (!workspace) {
       return;
     }
 
@@ -3622,7 +3451,7 @@ export class HybridWindowManager {
       return;
     }
 
-    if (!workspace.isTiled || !workspace.isActive()) {
+    if (!workspace.isActive()) {
       return;
     }
 
@@ -3650,7 +3479,7 @@ export class HybridWindowManager {
         ? monitorHint
         : (this.outputNameAt(position.x, position.y) ?? this.currentMonitor);
     const workspace = this.workspaceForMonitor(monitor);
-    if (!workspace?.isTiled || !workspace.isActive()) {
+    if (!workspace?.isActive()) {
       return;
     }
 
@@ -3675,17 +3504,6 @@ export class HybridWindowManager {
       return;
     }
     this.currentMonitor = monitor;
-  }
-
-  private availableWorkspaceIndex(monitor: string, preferredIndex: number) {
-    if (!this.workspaces.has(workspaceKey(monitor, preferredIndex))) {
-      return preferredIndex;
-    }
-    let index = 1;
-    while (this.workspaces.has(workspaceKey(monitor, index))) {
-      index += 1;
-    }
-    return index;
   }
 
   private syncWorkspaceVisibility() {
@@ -3954,7 +3772,7 @@ export class HybridWindowManager {
       const restoreRect = window.state[WINDOW_STATE_FULLSCREEN_RESTORE_RECT]();
       window.state[WINDOW_STATE_FULLSCREEN].set(false);
       window.state[WINDOW_STATE_FULLSCREEN_RESTORE_RECT].set(null);
-      if (workspace?.isTiled && workspace.shouldTile(window)) {
+      if (workspace?.shouldTile(window)) {
         workspace.applyLayout();
         this.applyWorkspaceStackPolicy(workspace);
         return;
@@ -3997,20 +3815,6 @@ export class HybridWindowManager {
     );
     this.applyWorkspaceStackPolicy(workspace);
     window.focus();
-  }
-
-  private initialRestoreRectForMonocleWindow(
-    window: WaylandWindow,
-  ): ManagedWindowRect {
-    const monocleRect = this.monocleRectForWindow(window);
-    const width = Math.max(1, read(monocleRect.width) * 0.7);
-    const height = Math.max(1, read(monocleRect.height) * 0.7);
-    return {
-      x: read(monocleRect.x) + (read(monocleRect.width) - width) / 2,
-      y: read(monocleRect.y) + (read(monocleRect.height) - height) / 2,
-      width,
-      height,
-    };
   }
 
   private restoreRectForMonocleMove(
@@ -4148,293 +3952,6 @@ export class HybridWindowManager {
         return { x: bx, y: bottomY, width: halfW, height: halfH };
       case "bottom-right":
         return { x: rightX, y: bottomY, width: halfW, height: halfH };
-    }
-  }
-
-  private resizeFloatingSnapLayout(
-    event: WindowResizeEvent,
-    workspace: Workspace,
-    nextRect: ManagedWindowRect,
-  ): boolean {
-    if (workspace.isTiled) {
-      return false;
-    }
-
-    const zone = event.window.state[WINDOW_STATE_SNAP_ZONE]();
-    if (!isLayoutSnapZone(zone)) {
-      return false;
-    }
-
-    const monitor =
-      event.window.state[WINDOW_STATE_SNAP_MONITOR]() || workspace.monitor;
-    const base = this.monitorSnapBaseRect(monitor);
-    if (!base) {
-      return false;
-    }
-
-    const snappedWindows = workspace
-      .listWindows()
-      .filter((window) => this.isWindowInFloatingSnapLayout(window, monitor));
-    if (!snappedWindows.some((window) => window.id === event.window.id)) {
-      return false;
-    }
-
-    const layout = this.floatingSnapLayoutFromWindows(base, snappedWindows);
-    let changed = false;
-
-    if (event.edges.right && isLeftSnapZone(zone)) {
-      layout.splitX = read(nextRect.x) + read(nextRect.width);
-      changed = true;
-    } else if (event.edges.left && isRightSnapZone(zone)) {
-      layout.splitX = read(nextRect.x) - SNAP_GAP_PX;
-      changed = true;
-    }
-
-    if (event.edges.bottom && isTopSnapZone(zone)) {
-      if (snapColumn(zone) === "left") {
-        layout.leftSplitY = read(nextRect.y) + read(nextRect.height);
-      } else {
-        layout.rightSplitY = read(nextRect.y) + read(nextRect.height);
-      }
-      changed = true;
-    } else if (event.edges.top && isBottomSnapZone(zone)) {
-      if (snapColumn(zone) === "left") {
-        layout.leftSplitY = read(nextRect.y) - SNAP_GAP_PX;
-      } else {
-        layout.rightSplitY = read(nextRect.y) - SNAP_GAP_PX;
-      }
-      changed = true;
-    }
-
-    if (!changed) {
-      return false;
-    }
-
-    this.clampFloatingSnapLayout(base, layout, snappedWindows);
-    this.applyFloatingSnapLayout(base, layout, snappedWindows);
-    return true;
-  }
-
-  private isWindowInFloatingSnapLayout(
-    window: WaylandWindow,
-    monitor: string,
-  ): boolean {
-    return (
-      isLayoutSnapZone(window.state[WINDOW_STATE_SNAP_ZONE]()) &&
-      window.state[WINDOW_STATE_SNAP_MONITOR]() === monitor &&
-      !window.state[WINDOW_STATE_MINIMIZED]() &&
-      !window.state[WINDOW_STATE_MONOCLE]()
-    );
-  }
-
-  private floatingSnapLayoutFromWindows(
-    base: ManagedWindowRect,
-    windows: WaylandWindow[],
-  ): FloatingSnapLayout {
-    const bx = read(base.x);
-    const by = read(base.y);
-    const bw = read(base.width);
-    const bh = read(base.height);
-    const defaultSplitX = bx + (bw - SNAP_GAP_PX) / 2;
-    const defaultSplitY = by + (bh - SNAP_GAP_PX) / 2;
-    const splitXSamples: number[] = [];
-    const leftSplitYSamples: number[] = [];
-    const rightSplitYSamples: number[] = [];
-
-    for (const window of windows) {
-      const zone = window.state[WINDOW_STATE_SNAP_ZONE]();
-      if (!isLayoutSnapZone(zone)) {
-        continue;
-      }
-      const rect = window.state[WINDOW_STATE_RECT]();
-      if (isLeftSnapZone(zone)) {
-        splitXSamples.push(read(rect.x) + read(rect.width));
-      } else {
-        splitXSamples.push(read(rect.x) - SNAP_GAP_PX);
-      }
-
-      if (isTopSnapZone(zone)) {
-        const samples =
-          snapColumn(zone) === "left" ? leftSplitYSamples : rightSplitYSamples;
-        samples.push(read(rect.y) + read(rect.height));
-      } else if (isBottomSnapZone(zone)) {
-        const samples =
-          snapColumn(zone) === "left" ? leftSplitYSamples : rightSplitYSamples;
-        samples.push(read(rect.y) - SNAP_GAP_PX);
-      }
-    }
-
-    return {
-      splitX: averageOr(splitXSamples, defaultSplitX),
-      leftSplitY: averageOr(leftSplitYSamples, defaultSplitY),
-      rightSplitY: averageOr(rightSplitYSamples, defaultSplitY),
-    };
-  }
-
-  private clampFloatingSnapLayout(
-    base: ManagedWindowRect,
-    layout: FloatingSnapLayout,
-    windows: WaylandWindow[],
-  ): void {
-    const bx = read(base.x);
-    const by = read(base.y);
-    const bw = read(base.width);
-    const bh = read(base.height);
-    const groups = this.floatingSnapMinSizeGroups(windows);
-
-    layout.splitX = clamp(
-      layout.splitX,
-      bx + groups.leftWidth,
-      bx + bw - SNAP_GAP_PX - groups.rightWidth,
-    );
-    layout.leftSplitY = clamp(
-      layout.leftSplitY,
-      by + groups.leftTopHeight,
-      by + bh - SNAP_GAP_PX - groups.leftBottomHeight,
-    );
-    layout.rightSplitY = clamp(
-      layout.rightSplitY,
-      by + groups.rightTopHeight,
-      by + bh - SNAP_GAP_PX - groups.rightBottomHeight,
-    );
-  }
-
-  private floatingSnapMinSizeGroups(windows: WaylandWindow[]): {
-    leftWidth: number;
-    rightWidth: number;
-    leftTopHeight: number;
-    leftBottomHeight: number;
-    rightTopHeight: number;
-    rightBottomHeight: number;
-  } {
-    const groups = {
-      leftWidth: 1,
-      rightWidth: 1,
-      leftTopHeight: 1,
-      leftBottomHeight: 1,
-      rightTopHeight: 1,
-      rightBottomHeight: 1,
-    };
-
-    for (const window of windows) {
-      const zone = window.state[WINDOW_STATE_SNAP_ZONE]();
-      if (!isLayoutSnapZone(zone)) {
-        continue;
-      }
-
-      const minSize = this.floatingSnapMinSize(window);
-      if (isLeftSnapZone(zone)) {
-        groups.leftWidth = Math.max(groups.leftWidth, minSize.width);
-      } else {
-        groups.rightWidth = Math.max(groups.rightWidth, minSize.width);
-      }
-
-      if (isTopSnapZone(zone)) {
-        if (snapColumn(zone) === "left") {
-          groups.leftTopHeight = Math.max(groups.leftTopHeight, minSize.height);
-        } else {
-          groups.rightTopHeight = Math.max(
-            groups.rightTopHeight,
-            minSize.height,
-          );
-        }
-      } else if (isBottomSnapZone(zone)) {
-        if (snapColumn(zone) === "left") {
-          groups.leftBottomHeight = Math.max(
-            groups.leftBottomHeight,
-            minSize.height,
-          );
-        } else {
-          groups.rightBottomHeight = Math.max(
-            groups.rightBottomHeight,
-            minSize.height,
-          );
-        }
-      }
-    }
-
-    return groups;
-  }
-
-  private floatingSnapMinSize(window: WaylandWindow): {
-    width: number;
-    height: number;
-  } {
-    const constraints = window.sizeConstraints();
-    const extra = this.clientToRootSizeExtra(window);
-    return {
-      width: Math.max(1, constraints.min?.width ?? 1) + extra.width,
-      height: Math.max(1, constraints.min?.height ?? 1) + extra.height,
-    };
-  }
-
-  private applyFloatingSnapLayout(
-    base: ManagedWindowRect,
-    layout: FloatingSnapLayout,
-    windows: WaylandWindow[],
-  ): void {
-    for (const window of windows) {
-      const zone = window.state[WINDOW_STATE_SNAP_ZONE]();
-      if (!isLayoutSnapZone(zone)) {
-        continue;
-      }
-
-      const rect = this.floatingSnapRectForZone(base, layout, zone);
-      stopRectAnimation(window, WINDOW_STATE_RECT);
-      window.state[WINDOW_STATE_RECT].set(rect);
-    }
-  }
-
-  private floatingSnapRectForZone(
-    base: ManagedWindowRect,
-    layout: FloatingSnapLayout,
-    zone: LayoutSnapZone,
-  ): ManagedWindowRect {
-    const bx = read(base.x);
-    const by = read(base.y);
-    const bw = read(base.width);
-    const bh = read(base.height);
-    const rightX = layout.splitX + SNAP_GAP_PX;
-    const leftWidth = Math.max(1, layout.splitX - bx);
-    const rightWidth = Math.max(1, bx + bw - rightX);
-
-    switch (zone) {
-      case "left":
-        return { x: bx, y: by, width: leftWidth, height: bh };
-      case "right":
-        return { x: rightX, y: by, width: rightWidth, height: bh };
-      case "top-left":
-        return {
-          x: bx,
-          y: by,
-          width: leftWidth,
-          height: Math.max(1, layout.leftSplitY - by),
-        };
-      case "bottom-left": {
-        const y = layout.leftSplitY + SNAP_GAP_PX;
-        return {
-          x: bx,
-          y,
-          width: leftWidth,
-          height: Math.max(1, by + bh - y),
-        };
-      }
-      case "top-right":
-        return {
-          x: rightX,
-          y: by,
-          width: rightWidth,
-          height: Math.max(1, layout.rightSplitY - by),
-        };
-      case "bottom-right": {
-        const y = layout.rightSplitY + SNAP_GAP_PX;
-        return {
-          x: rightX,
-          y,
-          width: rightWidth,
-          height: Math.max(1, by + bh - y),
-        };
-      }
     }
   }
 

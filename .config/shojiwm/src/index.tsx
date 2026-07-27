@@ -247,14 +247,38 @@ WORKSPACE_IPC.handle("workspaces.activate", (params) => {
     scheduleWorkspaceBroadcast();
   }
 });
-WORKSPACE_IPC.handle("workspaces.toggleTiling", (params) => {
-  const monitor = (params as { monitor?: string } | undefined)?.monitor;
-  if (monitor) {
-    HYBRID_WINDOW_MANAGER.toggleWorkspaceTilingForMonitor(monitor);
-  } else {
-    HYBRID_WINDOW_MANAGER.toggleCurrentWorkspaceTiling();
+WORKSPACE_IPC.handle("workspaces.moveWindow", (params) => {
+  const request = params as
+    | { monitor?: string; index?: number; follow?: boolean }
+    | undefined;
+  if (request?.monitor && typeof request.index === "number") {
+    HYBRID_WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
+      request.monitor,
+      request.index,
+      { follow: request.follow },
+    );
+    scheduleWorkspaceBroadcast();
   }
-  scheduleWorkspaceBroadcast();
+});
+WORKSPACE_IPC.handle("workspaces.swap", (params) => {
+  const request = params as { monitor?: string; index?: number } | undefined;
+  if (request?.monitor && typeof request.index === "number") {
+    HYBRID_WINDOW_MANAGER.swapWorkspace(request.monitor, request.index);
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("workspaces.moveInto", (params) => {
+  const request = params as { monitor?: string; index?: number } | undefined;
+  if (request?.monitor && typeof request.index === "number") {
+    HYBRID_WINDOW_MANAGER.moveWorkspaceInto(request.monitor, request.index);
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("windows.closeCurrent", () => {
+  HYBRID_WINDOW_MANAGER.closeCurrentWorkspaceWindows();
+});
+WORKSPACE_IPC.handle("windows.closeAll", () => {
+  HYBRID_WINDOW_MANAGER.closeAllWindows();
 });
 WORKSPACE_IPC.handle("windows.activate", (params) => {
   const windowId = (params as { windowId?: string } | undefined)?.windowId;
@@ -359,13 +383,6 @@ COMPOSITOR.key.bind("chrome", "Super+B", () => {
   COMPOSITOR.process.spawn({ command: ["zen-browser"] });
 });
 
-COMPOSITOR.key.bind("discord", "Super+D", () => {
-  COMPOSITOR.process.spawn({
-    command:
-      "discord --enable-features=UseOzonePlatform --ozone-platform=wayland --enable-wayland-ime --disable-gpu",
-  });
-});
-
 COMPOSITOR.key.bind("dolphin", "Super+E", () => {
   COMPOSITOR.process.spawn({ command: ["kitty", "yazi"] });
 });
@@ -417,23 +434,6 @@ COMPOSITOR.key.bind("screenshot-region-freeze", "Super+Shift+S", () => {
   });
 });
 
-COMPOSITOR.key.bind("play", "XF86AudioPlay", () => {
-  COMPOSITOR.process.spawn({ command: "playerctl play-pause" });
-});
-COMPOSITOR.key.bind("pause", "XF86AudioPause", () => {
-  COMPOSITOR.process.spawn({ command: "playerctl play-pause" });
-});
-COMPOSITOR.key.bind("next", "XF86AudioNext", () => {
-  COMPOSITOR.process.spawn({ command: "playerctl next" });
-});
-COMPOSITOR.key.bind("prev", "XF86AudioPrev", () => {
-  COMPOSITOR.process.spawn({ command: "playerctl previous" });
-});
-
-COMPOSITOR.key.bind("toggle-tiling-mode", "Super+S", () => {
-  HYBRID_WINDOW_MANAGER.toggleCurrentWorkspaceTiling();
-  scheduleWorkspaceBroadcast();
-});
 COMPOSITOR.key.bind("tile-focus-left-quick", "Super+Left", () => {
   HYBRID_WINDOW_MANAGER.focusTile(-1);
 });
@@ -474,17 +474,11 @@ COMPOSITOR.key.bind("window-move-monitor-down", "Super+Shift+Down", () => {
   HYBRID_WINDOW_MANAGER.adaptiveMoveFocusedWindow("down");
   scheduleWorkspaceBroadcast();
 });
-COMPOSITOR.key.bind("workspace-prev", "Super+Ctrl+Up", () => {
-  HYBRID_WINDOW_MANAGER.switchWorkspace(-1);
-  scheduleWorkspaceBroadcast();
-});
-COMPOSITOR.key.bind("workspace-next", "Super+Ctrl+Down", () => {
-  HYBRID_WINDOW_MANAGER.switchWorkspace(1);
-  scheduleWorkspaceBroadcast();
-});
-
 COMPOSITOR.key.bind("window-fullscreen-toggle", "Super+Shift+F", () => {
   HYBRID_WINDOW_MANAGER.toggleFocusedWindowFullscreen();
+});
+COMPOSITOR.key.bind("window-float-toggle", "Super+V", () => {
+  HYBRID_WINDOW_MANAGER.toggleFocusedWindowFloating();
 });
 
 for (let i = 1; i <= 10; i++) {
@@ -541,12 +535,6 @@ COMPOSITOR.key.bind("brightness-up", "XF86MonBrightnessUp", () => {
   COMPOSITOR.process.spawn({
     command: "brightnessctl -e4 -n2 set 1%+",
   });
-});
-
-let profileEnabled = false;
-COMPOSITOR.key.bind("profile", "Super+Shift+T", () => {
-  profileEnabled = !profileEnabled;
-  COMPOSITOR.debug.enableProfile(profileEnabled);
 });
 
 COMPOSITOR.output.configure((context) => {

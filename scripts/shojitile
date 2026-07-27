@@ -1,33 +1,45 @@
 #!/usr/bin/env bash
 
-# Keqing-dots tiling wrapper for external applications (ShojiWM)
+# Keqing-dots terminal control for ShojiWM (talks to its IPC socket)
 
 deps socat || exit 1
 
 SOCK="${XDG_RUNTIME_DIR:-/tmp}/shojiwm-${WAYLAND_DISPLAY:-wayland-0}.sock"
 
-# Convert args to JSON literals
-_json_lit() { [[ "$1" =~ ^-?[0-9]+$ ]] && echo "$1" || printf '"%s"' "${1//\"/}"; }
+_json_str() { printf '"%s"' "${1//\"/\\\"}"; }
 
-_send() { printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCK" >/dev/null 2>&1; }
+# Fire-and-forget: no "id" in the request, no response is sent back.
+_send() { printf '%s\n' "$1" | socat -u - UNIX-CONNECT:"$SOCK" >/dev/null 2>&1; }
+
+# Request/response: "id" included, read the single matching reply line back.
+_query() { printf '%s\n' "$1" | socat -T 1 - UNIX-CONNECT:"$SOCK" 2>/dev/null | head -n1; }
+
+_workspace_params() {
+    [[ -n "$2" && -n "$3" ]] || { echo "usage: shojitile $1 <monitor> <index>" >&2; exit 1; }
+    echo "\"monitor\":$(_json_str "$2"),\"index\":$3"
+}
 
 case "$1" in
-    fw) _send "{\"method\":\"workspace/focus\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
+    get) _query '{"id":1,"method":"workspaces.get"}' ;;
+    switch) _send "{\"method\":\"workspaces.switch\",\"params\":{\"direction\":${2:-1}}}" ;;
+    fw) _send "{\"method\":\"workspaces.activate\",\"params\":{$(_workspace_params fw "$2" "$3")}}" ;;
     mw)
         follow="true"
-        [[ "$2" == "q" ]] && { follow="false"; shift; }
-        params="\"index\":$(_json_lit "$2"),\"follow\":$follow"
-        [[ -n "$3" ]] && params="$params,\"windowId\":$(_json_lit "$3")"
-        _send "{\"method\":\"window/move\",\"params\":{$params}}"
+        [[ "$4" == "q" ]] && follow="false"
+        _send "{\"method\":\"workspaces.moveWindow\",\"params\":{$(_workspace_params mw "$2" "$3"),\"follow\":$follow}}"
         ;;
+    sw) _send "{\"method\":\"workspaces.swap\",\"params\":{$(_workspace_params sw "$2" "$3")}}" ;;
+    mi) _send "{\"method\":\"workspaces.moveInto\",\"params\":{$(_workspace_params mi "$2" "$3")}}" ;;
     cw)
-        if [[ -n "$2" ]]; then
-            _send "{\"method\":\"window/close\",\"params\":{\"scope\":$(_json_lit "$2")}}"
+        if [[ "$2" == "a" ]]; then
+            _send '{"method":"windows.closeAll"}'
         else
-            _send "{\"method\":\"window/close\",\"params\":{}}"
+            _send '{"method":"windows.closeCurrent"}'
         fi
         ;;
-    mi) _send "{\"method\":\"workspace/moveInto\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
-    sw) _send "{\"method\":\"workspace/swap\",\"params\":{\"index\":$(_json_lit "$2")}}" ;;
-    *) echo "usage: shojitile <cw|fw|mi|mw|sw> [args]" >&2 ;;
+    aw)
+        [[ -n "$2" ]] || { echo "usage: shojitile aw <windowId>" >&2; exit 1; }
+        _send "{\"method\":\"windows.activate\",\"params\":{\"windowId\":$(_json_str "$2")}}"
+        ;;
+    *) echo "usage: shojitile <get|switch [-1|1]|fw <monitor> <index>|mw <monitor> <index> [q]|sw <monitor> <index>|mi <monitor> <index>|cw [a]|aw <windowId>>" >&2; exit 1 ;;
 esac
