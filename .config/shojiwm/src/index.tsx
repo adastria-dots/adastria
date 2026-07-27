@@ -366,6 +366,11 @@ COMPOSITOR.process.once("fcitx5", {
   runPolicy: "once-per-session",
 });
 
+COMPOSITOR.process.once("keqing-shell", {
+  command: "keqing-shell",
+  runPolicy: "once-per-session",
+});
+
 COMPOSITOR.process.service("cliphist-text", {
   command: ["wl-paste", "--type", "text", "--watch", "cliphist", "store"],
   restart: "on-exit",
