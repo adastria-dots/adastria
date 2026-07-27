@@ -69,14 +69,7 @@ V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot -m reg
 
 -- Keqing-shell IPC Calls
 V.qs = "keqing-shell "
-V.control = V.qs .. "controlcenter"
-V.launcher = V.qs .. "launcher"
-V.lock = V.qs .. "lock"
-V.logout = V.qs .. "logout"
-V.matrix = V.qs .. "matrix"
-V.overview = V.qs .. "overview"
-V.settings = V.qs .. "settings"
-V.visualizer = V.qs .. "visualizer"
+V.bar_autohide = V.qs .. ""
 
 -- =====================
 -- ENVIRONMENT VARIABLES
@@ -233,14 +226,16 @@ hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
 
 -- keqing-shell
 for k, v in pairs({
-	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.control),
-	[B.mod("I")] = hl.dsp.exec_cmd(V.settings),
-	[B.mod("L")] = hl.dsp.exec_cmd(V.lock),
-	[B.mod("M")] = hl.dsp.exec_cmd(V.matrix),
-	[B.mod("Q")] = hl.dsp.exec_cmd(V.logout),
-	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.visualizer),
-	[B.mod("TAB")] = hl.dsp.exec_cmd(V.overview),
-	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.launcher),
+	[B.mod("A")] = hl.dsp.exec_cmd(V.qs .. "bar"),
+	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.qs .. "bar-all"),
+	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.qs .. "controlcenter"),
+	[B.mod("I")] = hl.dsp.exec_cmd(V.qs .. "settings"),
+	[B.mod("L")] = hl.dsp.exec_cmd(V.qs.."lock"),
+	[B.mod("M")] = hl.dsp.exec_cmd(V.qs .. "matrix"),
+	[B.mod("Q")] = hl.dsp.exec_cmd(V.qs .. "logout"),
+	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.qs .. "visualizer"),
+	[B.mod("TAB")] = hl.dsp.exec_cmd(V.qs .. "overview"),
+	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.qs .. "launcher"),
 }) do
 	hl.bind(k, v)
 end
