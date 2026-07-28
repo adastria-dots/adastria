@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Keqing
+Description=Single-image Keqing boot theme
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/Keqing
+ScriptFile=/usr/share/plymouth/themes/Keqing/Keqing.script

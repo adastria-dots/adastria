@@ -171,12 +171,18 @@ sudo mkdir -p /boot/grub
 sudo grub-install --target=x86_64-efi --efi-directory="$efi_dir" --bootloader-id=GRUB
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 
-# 7. update (skip: plymouth, sddm, grub)
+# 7. update (skip: sddm, grub)
 step "Running update modules"
 for mod in stow sudo font cursor gtk desktop bin vscode yazi splash; do
     echo "  -> update $mod"
     "$R/scripts/update" "$mod"
 done
+echo "  -> update plymouth --no-rebuild"
+"$R/scripts/update" plymouth --no-rebuild
+echo "  -> update cmdline --no-rebuild"
+"$R/scripts/update" cmdline --no-rebuild
+echo "  -> update ramfs"
+"$R/scripts/update" ramfs
 
 # 8. Clone and setup keqing-shell
 step "Cloning keqing-shell"

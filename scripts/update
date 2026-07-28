@@ -8,7 +8,7 @@ SD="$R/scripts"
 TD="$R/system/themes"
 AD="$R/system/applications"
 
-MODS=(bin cursor desktop font gtk grub keqing sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
+MODS=(bin cmdline cursor desktop font gtk grub keqing plymouth sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
 
 BIN_IGNORE=()
 
@@ -147,10 +147,10 @@ update_ramfs() {
 
     echo "detected modules: ${mods[*]:-none}"
     local dst; dst=$(join_r "$1" "/etc/mkinitcpio.conf")
-    printf 'MODULES=(%s)\n\nHOOKS=(base systemd autodetect microcode modconf %skeyboard sd-vconsole block filesystems fsck)\n\nCOMPRESSION="lz4"\n' \
+    printf 'MODULES=(%s)\n\nHOOKS=(base systemd plymouth plymouth-shutdown autodetect microcode modconf %skeyboard sd-vconsole block filesystems fsck)\n\nCOMPRESSION="lz4"\n' \
         "${mods[*]}" "$kms_hook" | sudoc "$1" tee "$dst" >/dev/null
     echo "rebuilding initramfs"
-    sudoc "$1" mkinitcpio -P &>/dev/null
+    sudoc "$1" mkinitcpio -P
 }
 
 update_cursor() {
@@ -269,6 +269,37 @@ update_sddm() {
     fi
 }
 
+update_cmdline() {
+    _detect_gpu
+    local extra=()
+    $has_nvidia && extra+=(nvidia_drm.modeset=1)
+    $has_intel  && extra+=(i915.fastboot=1)
+
+    local dst; dst=$(join_r "$1" "/etc/kernel/cmdline")
+    sudoc "$1" mkdir -p "${dst%/*}"
+    printf '%s %s\n' "$(<"$R/system/cmdline")" "${extra[*]}" | sudoc "$1" tee "$dst" >/dev/null
+    [[ "$2" -eq 1 ]] || update_ramfs "$1"
+}
+
+update_plymouth() {
+    deps plymouth-set-default-theme || die "plymouth: missing dependency"
+    local dst_t; dst_t=$(join_r "$1" "/usr/share/plymouth/themes/$TN")
+
+    if [[ "$2" -eq 1 ]]; then
+        sudoc "$1" rm -rf "$dst_t"
+    else
+        req_dir "$TD/plymouth/$TN"
+        sudoc "$1" rm -rf "$dst_t"; sudoc "$1" mkdir -p "$dst_t"
+        sudoc "$1" cp -r --no-preserve=ownership "$TD/plymouth/$TN"/. "$dst_t"/
+        if [[ "$1" == "/" ]]; then
+            sudo plymouth-set-default-theme "$TN"
+            sudo systemctl enable plymouth-start.service plymouth-quit-wait.service plymouth-quit.service \
+                plymouth-poweroff.service plymouth-reboot.service plymouth-halt.service plymouth-kexec.service &>/dev/null || true
+        fi
+    fi
+    [[ "$3" -eq 1 ]] || update_ramfs "$1"
+}
+
 update_splash() {
     local dst="/usr/share/systemd/bootctl/splash-arch.bmp"
     sudoc "$1" cp "$TD/splash/splash.bmp" "$dst"
@@ -311,12 +342,12 @@ update_yazi() {
     ya pkg upgrade --discard
 }
 
-usage() { echo -e "Usage:\n  update <module> [args] [--remove]\n  update -h|--help\nModules:\n  ${MODS[*]}\nModule args:\n  grub <resolution>\n  grub --remove\n  keqing push"; exit "${1:-0}"; }
+usage() { echo -e "Usage:\n  update <module> [args] [--remove]\n  update -h|--help\nModules:\n  ${MODS[*]}\nModule args:\n  grub <resolution>\n  grub --remove\n  keqing push\n  plymouth --no-rebuild\n  cmdline --no-rebuild"; exit "${1:-0}"; }
 
 [[ $# -eq 0 ]] && usage 2
 [[ "$1" == "-h" || "$1" == "--help" ]] && usage 0
 
-mod="$1"; shift; res=""; rm=0; arg=""
+mod="$1"; shift; res=""; rm=0; arg=""; norebuild=0
 
 if [[ "$mod" == "grub" ]]; then
     [[ $# -ge 1 ]] || die "grub: expected <res> or --remove"
@@ -324,7 +355,13 @@ if [[ "$mod" == "grub" ]]; then
 elif [[ "$mod" == "keqing" ]]; then
     [[ "${1:-}" == "push" ]] && { arg="push"; shift; }
 else
-    [[ "${1:-}" == "--remove" ]] && { rm=1; shift; }
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --remove) rm=1; shift ;;
+            --no-rebuild) norebuild=1; shift ;;
+            *) break ;;
+        esac
+    done
 fi
 [[ $# -gt 0 ]] && die "too many args"
 
@@ -336,6 +373,8 @@ case "$mod" in
     sudo|font|cursor|gtk|ramfs|vscode) "update_$mod" "$TR" ;;
     symlinks) update_symlinks ;;
     bin|desktop|yazi|sddm) "update_$mod" "$TR" "$rm" ;;
+    plymouth) update_plymouth "$TR" "$rm" "$norebuild" ;;
+    cmdline) update_cmdline "$TR" "$norebuild" ;;
     splash) update_splash "$TR" ;;
     grub) update_grub "$TR" "$res" "$rm" ;;
     *) die "unknown module: $mod" ;;
