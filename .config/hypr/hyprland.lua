@@ -228,14 +228,16 @@ hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
 -- keqing-shell
 for k, v in pairs({
 	[B.mod("A")] = hl.dsp.exec_cmd(V.qs .. "bar"),
-	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.qs .. "bar-all"),
-	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.qs .. "controlcenter"),
+	[B.mod("D")] = hl.dsp.exec_cmd(V.qs .. "dock"),
 	[B.mod("I")] = hl.dsp.exec_cmd(V.qs .. "settings"),
 	[B.mod("L")] = hl.dsp.exec_cmd(V.qs.."lock"),
 	[B.mod("M")] = hl.dsp.exec_cmd(V.qs .. "matrix"),
 	[B.mod("Q")] = hl.dsp.exec_cmd(V.qs .. "logout"),
-	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.qs .. "visualizer"),
 	[B.mod("TAB")] = hl.dsp.exec_cmd(V.qs .. "overview"),
+	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.qs .. "bar-all"),
+	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.qs .. "controlcenter"),
+	[B.mod("D", "s")] = hl.dsp.exec_cmd(V.qs .. "dock-all"),
+	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.qs .. "visualizer"),
 	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.qs .. "launcher"),
 }) do
 	hl.bind(k, v)
