@@ -1,0 +1,9 @@
+[SddmGreeterTheme]
+Name=Keqing
+Description=Keqing
+Type=sddm-theme
+ConfigFile=Keqing.conf
+MainScript=Main.qml
+Theme-Id=Keqing
+Theme-API=2.0
+QtVersion=6
