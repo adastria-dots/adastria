@@ -340,6 +340,7 @@ export interface WorkspacesViewWindow {
   title: string;
   focused: boolean;
   urgent: boolean;
+  monocle: boolean;
   lastFocusedAt: number;
   rect: ManagedWindowRect;
 }
@@ -814,6 +815,9 @@ export class Workspace {
     }
 
     const snapshot = this.snapshotWindow(window);
+    // Monocle is a momentary, explicit toggle (config.md) — it must not
+    // survive a move to another workspace, and isn't part of the snapshot.
+    window.state[WINDOW_STATE_MONOCLE].set(false);
     this.removeWindow(window);
     return { window, snapshot };
   }
@@ -2501,6 +2505,15 @@ export class HybridWindowManager {
   // MAXIMIZE / MINIMIZE / FULLSCREEN / MONOCLE
   // ==========================================
   public onWindowMaximizeRequest(event: WindowMaximizeRequestEvent) {
+    // Monocle only enters via Super+F (toggleFocusedWindowMonocle calls
+    // window.maximize(), source "api"). Every other source — client CSD
+    // buttons, xwayland _NET_WM_STATE_MAXIMIZED, clients replaying their
+    // own "was maximized" state on launch (Zen/Firefox does this) — is
+    // ignored, so nothing but the keybind can put a window into monocle.
+    if (event.maximized && event.source !== "api") {
+      return;
+    }
+
     const workspace = this.findWorkspaceForWindow(event.window);
     if (this.isGrabbing) {
       return;
@@ -4157,6 +4170,7 @@ export class HybridWindowManager {
           title: window.title(),
           focused: window.isFocused(),
           urgent: window.state[WINDOW_STATE_URGENT](),
+          monocle: window.state[WINDOW_STATE_MONOCLE](),
           lastFocusedAt: this.lastFocusedAt.get(window.id) ?? 0,
           rect: window.state[WINDOW_STATE_RECT](),
         }));

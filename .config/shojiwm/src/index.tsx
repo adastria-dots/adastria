@@ -42,12 +42,14 @@ declare module "node:fs" {
 
 interface ThemeColors {
   accent: string;
+  accentAlt: string;
   lavender: string;
   textDim: string;
 }
 
 const THEME_FALLBACK: ThemeColors = {
   accent: "#7B2FE8",
+  accentAlt: "#C8942A",
   lavender: "#5E50A0",
   textDim: "#5E50A0",
 };
@@ -66,6 +68,7 @@ const currentTheme = readCurrentTheme();
 
 const theme: ThemeColors = {
   accent: currentTheme.accent ?? THEME_FALLBACK.accent,
+  accentAlt: currentTheme.accentAlt ?? THEME_FALLBACK.accentAlt,
   lavender: currentTheme.lavender ?? THEME_FALLBACK.lavender,
   textDim: currentTheme.lavender ?? THEME_FALLBACK.textDim,
 };
@@ -733,8 +736,15 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     () => minimizeVisualIdle() || (!workspaceVisible() && !tileDragging()),
   );
 
-  const borderColor = window.isFocused((focused) =>
-    focused ? theme.accent : `${theme.textDim}AA`,
+  const monocle = window.state[WINDOW_STATE_MONOCLE];
+  const borderColor = computed(() =>
+    monocle()
+      ? window.isFocused()
+        ? theme.accentAlt
+        : `${theme.accentAlt}AA`
+      : window.isFocused()
+        ? theme.accent
+        : `${theme.textDim}AA`,
   );
 
   const backgroundShader = compileEffect({
