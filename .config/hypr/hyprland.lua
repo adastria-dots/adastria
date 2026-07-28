@@ -62,10 +62,9 @@ V.wpm = 10
 -- Applications
 V.terminal = "kitty"
 V.browser = "zen-browser"
-V.browser_private = "zen-browser --private"
 V.editor = "code"
 V.filemanager = V.terminal .. " yazi"
-V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot -m region -o $HOME/Pictures/screenshots/'"
+V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot --freeze -m region -o $HOME/Pictures/screenshots/'"
 
 -- Keqing-shell IPC Calls
 V.qs = "keqing-shell "
@@ -253,7 +252,6 @@ end
 -- Apps
 for k, v in pairs({
 	[B.mod("B")] = hl.dsp.exec_cmd(V.browser),
-	[B.mod("B", "s")] = hl.dsp.exec_cmd(V.browser_private),
 	[B.mod("C")] = hl.dsp.exec_cmd(V.editor),
 	[B.mod("E")] = hl.dsp.exec_cmd(V.filemanager),
 	[B.mod("K", "a")] = hl.dsp.exec_cmd(V.editor .. " keqing-shell"),
