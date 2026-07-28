@@ -8,7 +8,7 @@ SD="$R/scripts"
 TD="$R/system/themes"
 AD="$R/system/applications"
 
-MODS=(bin cursor desktop font gtk grub keqing shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
+MODS=(bin cursor desktop font gtk grub keqing sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
 
 BIN_IGNORE=()
 
@@ -254,6 +254,21 @@ update_grub() {
     [[ "$1" == "/" ]] && sudo grub-mkconfig -o /boot/grub/grub.cfg || true
 }
 
+update_sddm() {
+    deps sddm || die "sddm: missing dependency"
+    local dst_t; dst_t=$(join_r "$1" "/usr/share/sddm/themes/$TN")
+    local dst_c; dst_c=$(join_r "$1" "/etc/sddm.conf")
+
+    if [[ "$2" -eq 1 ]]; then
+        sudoc "$1" rm -rf "$dst_t"
+    else
+        req_dir "$TD/sddm/$TN"
+        sudoc "$1" rm -rf "$dst_t"; sudoc "$1" mkdir -p "$dst_t"
+        sudoc "$1" cp -r --no-preserve=ownership "$TD/sddm/$TN"/. "$dst_t"/
+        sudoc "$1" install -Dm644 "$TD/sddm/sddm.conf" "$dst_c"
+    fi
+}
+
 update_splash() {
     local dst="/usr/share/systemd/bootctl/splash-arch.bmp"
     sudoc "$1" cp "$TD/splash/splash.bmp" "$dst"
@@ -320,7 +335,7 @@ case "$mod" in
     shoji) update_shoji "$TR" "$rm" ;;
     sudo|font|cursor|gtk|ramfs|vscode) "update_$mod" "$TR" ;;
     symlinks) update_symlinks ;;
-    bin|desktop|yazi) "update_$mod" "$TR" "$rm" ;;
+    bin|desktop|yazi|sddm) "update_$mod" "$TR" "$rm" ;;
     splash) update_splash "$TR" ;;
     grub) update_grub "$TR" "$res" "$rm" ;;
     *) die "unknown module: $mod" ;;

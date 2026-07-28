@@ -37,7 +37,6 @@ COMPOSITOR_PKGS=(
     pkgconf
     quickshell
     rust
-    sddm
     seatd
     wayland
     wayland-protocols
@@ -159,7 +158,7 @@ git clone https://github.com/bea4dev/ShojiWM.git "$HOME/ShojiWM"
 
 # 5. Enable services
 step "Enabling services"
-sudo systemctl enable NetworkManager bluetooth sddm # network, bluetooth, greeter
+sudo systemctl enable NetworkManager bluetooth # network, bluetooth
 systemctl --user enable pipewire pipewire-pulse wireplumber syncthing # audio, sync
 
 step "Masking dunst"
@@ -192,6 +191,21 @@ step "Configuring git"
 git config --global pull.rebase true
 git config --global push.autoSetupRemote true
 
+# 10. Greeter
+step "Machine type"
+read -r -p "Is this a PC? [y/N] " is_pc
+
+if [[ "$is_pc" =~ ^[Yy]$ ]]; then
+    step "Configuring autologin"
+    sudo pacman -S --needed --noconfirm greetd
+    sudo "$R/system/autologin" "shoji_wm --tty"
+else
+    step "Configuring SDDM"
+    sudo pacman -S --needed --noconfirm sddm
+    sudo systemctl enable sddm
+    "$R/scripts/update" sddm
+fi
+
 cd "$HOME"
 echo
-echo "Setup complete. Reboot now, then pick ShojiWM from SDDM's session list: sudo reboot"
+echo "Setup complete. Reboot now: sudo reboot"

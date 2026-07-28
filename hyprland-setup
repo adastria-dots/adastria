@@ -26,7 +26,6 @@ CORE_PKGS=(
 )
 
 COMPOSITOR_PKGS=(
-    greetd
     hyprland
     quickshell
     wl-clipboard
@@ -173,9 +172,20 @@ step "Configuring git"
 git config --global pull.rebase true
 git config --global push.autoSetupRemote true
 
-# 10. Autologin
-step "Configuring autologin"
-sudo "$R/system/autologin"
+# 10. Greeter
+step "Machine type"
+read -r -p "Is this a PC? [y/N] " is_pc
+
+if [[ "$is_pc" =~ ^[Yy]$ ]]; then
+    step "Configuring autologin"
+    sudo pacman -S --needed --noconfirm greetd
+    sudo "$R/system/autologin" start-hyprland
+else
+    step "Configuring SDDM"
+    sudo pacman -S --needed --noconfirm sddm
+    sudo systemctl enable sddm
+    "$R/scripts/update" sddm
+fi
 
 cd "$HOME"
 echo

@@ -3,6 +3,7 @@ set -euo pipefail
 
 [[ "$EUID" -eq 0 && -n "${SUDO_USER:-}" ]] || { echo "Run with: sudo $0"; exit 1; }
 
+SESSION_CMD="${1:-start-hyprland}"
 TARGET_USER="$SUDO_USER"
 TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 
@@ -39,7 +40,7 @@ command = "agreety --cmd $ZSH_PATH"
 user = "greeter"
 
 [initial_session]
-command = "start-hyprland"
+command = "$SESSION_CMD"
 user = "$TARGET_USER"
 EOF
 
