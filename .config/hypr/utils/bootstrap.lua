@@ -26,10 +26,6 @@ function B.load_device()
 	return require("devices." .. (device or "hq9afk"))
 end
 
-function B.map_keybinds(opts, keys)
-	for k, v in pairs(keys) do hl.bind(k, v, opts) end
-end
-
 function B.mod(key, mods)
 	mods = mods or ""
 	local parts = { "SUPER" }

@@ -2,6 +2,7 @@
 
 local B = require("utils.bootstrap")
 local T = require("utils.tiling")
+local L = require("utils.layout")
 
 -- =========
 -- COLORS
@@ -217,6 +218,7 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 -- ============
 hl.window_rule({ match = { fullscreen = true }, border_color = V.col.accentAlt })
 hl.window_rule({ match = { float = true }, border_color = V.col.text })
+hl.window_rule({ match = { tag = "monocle" }, border_color = V.col.accentAlt .. "EE " .. V.col.accentAlt .. "AA" })
 hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
 
 -- ===========
@@ -241,12 +243,22 @@ end
 
 -- Window states
 for k, v in pairs({
-	[B.mod("F")] = hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }),
+	[B.mod("F")] = L.toggle_monocle_or_maximize,
 	[B.mod("F", "s")] = hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }),
 	[B.mod("P")] = hl.dsp.window.pseudo(),
 	[B.mod("V")] = hl.dsp.window.float({ action = "toggle" }),
 }) do
 	hl.bind(k, v)
+end
+
+-- Layout
+for k, v in pairs({
+	[B.mod("equal")] = function() L.bump(1) end,
+	[B.mod("minus")] = function() L.bump(-1) end,
+	[B.mod("equal", "s")] = L.toggle_strict,
+	[B.mod("minus", "s")] = L.reset,
+}) do
+	hl.bind(k, v, { repeating = true })
 end
 
 -- Apps

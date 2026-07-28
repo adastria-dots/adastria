@@ -1,92 +1,83 @@
 -- SCROLLUMNS LAYOUT (scrolling columns)
 
-local B = require("utils.bootstrap")
-local T = require("utils.tiling")
+local M = {}
 
-local Scrollumns = {}
+local max_cols
+local scroll = {}
+local overrides = {}
+local strict = {}
+local monocle = {}
 
-local function resolve_max_cols(max_cols, mon_name)
-	if type(max_cols) == "table" then return max_cols[mon_name] or 1 end
-	return max_cols or 1
+local function resolve_max_cols(cols, mon_name)
+	if type(cols) == "table" then return cols[mon_name] or 1 end
+	return cols or 1
 end
 
-function Scrollumns.register(max_cols)
-	local scroll = {}
-	local overrides = {}
-	local strict = {}
-	local monocle = {}
+local function notify(text)
+	hl.exec_cmd("notify-send -t 1500 '" .. text .. "'")
+end
+
+local function set_monocle_tag(addr, enabled)
+	hl.dispatch(hl.dsp.window.tag({ window = "address:" .. addr, tag = "monocle", action = enabled and "add" or "remove" }))
+end
+
+function M.bump(delta)
+	local ws = hl.get_active_workspace()
+	local mon = hl.get_active_monitor()
+	if not ws or not mon then return end
+	local current = overrides[ws.id] or resolve_max_cols(max_cols, mon.name)
+	local new_val = math.max(1, math.min(6, current + delta))
+	overrides[ws.id] = new_val
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nColumns: " .. new_val)
+end
+
+function M.toggle_strict()
+	local ws = hl.get_active_workspace()
+	if not ws then return end
+	local enabled = not strict[ws.id]
+	strict[ws.id] = enabled
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nStrict Columns: " .. (enabled and "On" or "Off"))
+end
+
+function M.reset()
+	local ws = hl.get_active_workspace()
+	if not ws then return end
+	overrides[ws.id] = nil
+	strict[ws.id] = nil
+	for _, w in ipairs(hl.get_workspace_windows(ws.id)) do
+		if monocle[w.address] then set_monocle_tag(w.address, false) end
+		monocle[w.address] = nil
+	end
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nReset to defaults")
+end
+
+local function toggle_monocle()
+	local win = hl.get_active_window()
+	if not win then return end
+	local enabled = not monocle[win.address]
+	monocle[win.address] = enabled or nil
+	set_monocle_tag(win.address, enabled)
+	hl.dispatch(hl.dsp.layout("sync"))
+end
+
+function M.toggle_monocle_or_maximize()
+	local win = hl.get_active_window()
+	if win and win.workspace and win.workspace.tiled_layout == "lua:scrollumns" then
+		toggle_monocle()
+		return
+	end
+	hl.dispatch(hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
+end
+
+function M.register(cols)
+	max_cols = cols
 
 	hl.on("window.active", function(win)
 		if win and win.workspace and win.workspace.tiled_layout == "lua:scrollumns" then hl.dispatch(hl.dsp.layout("sync")) end
 	end)
-
-	local function notify(text)
-		hl.exec_cmd("notify-send -t 1500 '" .. text .. "'")
-	end
-
-	local function bump(delta)
-		local ws = hl.get_active_workspace()
-		local mon = hl.get_active_monitor()
-		if not ws or not mon then return end
-		local current = overrides[ws.id] or resolve_max_cols(max_cols, mon.name)
-		local new_val = math.max(1, math.min(6, current + delta))
-		overrides[ws.id] = new_val
-		hl.dispatch(hl.dsp.layout("sync"))
-		notify("Workspace: " .. ws.name .. "\nColumns: " .. new_val)
-	end
-
-	local function toggle_strict()
-		local ws = hl.get_active_workspace()
-		if not ws then return end
-		local enabled = not strict[ws.id]
-		strict[ws.id] = enabled
-		hl.dispatch(hl.dsp.layout("sync"))
-		notify("Workspace: " .. ws.name .. "\nStrict Columns: " .. (enabled and "On" or "Off"))
-	end
-
-	local function reset()
-		local ws = hl.get_active_workspace()
-		if not ws then return end
-		overrides[ws.id] = nil
-		strict[ws.id] = nil
-		for _, w in ipairs(hl.get_workspace_windows(ws.id)) do monocle[w.address] = nil end
-		hl.dispatch(hl.dsp.layout("sync"))
-		notify("Workspace: " .. ws.name .. "\nReset to defaults")
-	end
-
-	local function toggle_monocle()
-		local win = hl.get_active_window()
-		if not win then return end
-		monocle[win.address] = not monocle[win.address] or nil
-		hl.dispatch(hl.dsp.layout("sync"))
-	end
-
-	local function toggle_monocle_or_maximize()
-		local win = hl.get_active_window()
-		if win and win.workspace and win.workspace.tiled_layout == "lua:scrollumns" then
-			toggle_monocle()
-			return
-		end
-		hl.dispatch(hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
-	end
-
-	for key, dir in pairs({ down = "d", left = "l", right = "r", up = "u" }) do
-		hl.unbind(B.mod(key, "s"))
-		hl.bind(B.mod(key, "s"), function() T.adaptive_move(dir) end, { repeating = true })
-	end
-
-	hl.unbind(B.mod("F"))
-	hl.bind(B.mod("F"), toggle_monocle_or_maximize)
-
-	B.map_keybinds({ repeating = true }, {
-		-- Column count
-		[B.mod("equal")] = function() bump(1) end,
-		[B.mod("minus")] = function() bump(-1) end,
-
-		-- Layout toggles
-		[B.mod("equal", "s")] = toggle_strict,
-		[B.mod("minus", "s")] = reset,
-	})
 
 	hl.layout.register("scrollumns", {
 		recalculate = function(ctx)
@@ -145,4 +136,4 @@ function Scrollumns.register(max_cols)
 	hl.config({ general = { layout = "lua:scrollumns" } })
 end
 
-return Scrollumns
+return M
