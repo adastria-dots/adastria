@@ -1,0 +1,127 @@
+# keqing-shell: auto-generated
+
+[mgr]
+cwd = { fg = "#9B57F4" }
+
+find_keyword  = { fg = "#C0547F", bold = true, italic = true, underline = true }
+find_position = { fg = "#CE8AFF", bg = "reset", bold = true, italic = true }
+
+marker_copied   = { fg = "#a8e6cf", bg = "#a8e6cf" }
+marker_cut      = { fg = "#C0547F", bg = "#C0547F" }
+marker_marked   = { fg = "#0A0614", bg = "#CE8AFF" }
+marker_selected = { fg = "#DBAA24", bg = "#DBAA24" }
+
+count_copied   = { fg = "#0A0614", bg = "#a8e6cf" }
+count_cut      = { fg = "#0A0614", bg = "#C0547F" }
+count_selected = { fg = "#0A0614", bg = "#9B57F4" }
+
+border_symbol = "│"
+border_style  = { fg = "#26164B" }
+
+
+[tabs]
+active   = { fg = "#0A0614", bg = "#9B57F4", bold = true }
+inactive = { fg = "#9B57F4", bg = "#120B23" }
+
+
+[mode]
+normal_main = { fg = "#0A0614", bg = "#9B57F4", bold = true }
+normal_alt  = { fg = "#9B57F4", bg = "#120B23" }
+
+select_main = { fg = "#0A0614", bg = "#a8e6cf", bold = true }
+select_alt  = { fg = "#9B57F4", bg = "#120B23" }
+
+unset_main = { fg = "#0A0614", bg = "#CE8AFF", bold = true }
+unset_alt  = { fg = "#9B57F4", bg = "#120B23" }
+
+
+[status]
+overall   = { fg = "#9B57F4" }
+sep_left  = { open = "", close = "" }
+sep_right = { open = "", close = "" }
+
+progress_label  = { fg = "#F0ECF9", bold = true }
+progress_normal = { fg = "#9B57F4", bg = "#120B23" }
+progress_error  = { fg = "#C0547F", bg = "#120B23" }
+
+perm_sep   = { fg = "#806FBE" }
+perm_type  = { fg = "#a8e6cf" }
+perm_read  = { fg = "#DBAA24" }
+perm_write = { fg = "#C0547F" }
+perm_exec  = { fg = "#CE8AFF" }
+
+
+[pick]
+border   = { fg = "#9B57F4" }
+active   = { fg = "#CE8AFF", bold = true }
+inactive = {}
+
+
+[input]
+border   = { fg = "#9B57F4" }
+title    = {}
+value    = {}
+selected = { reversed = true }
+
+
+[cmp]
+border = { fg = "#9B57F4" }
+
+
+[tasks]
+border  = { fg = "#9B57F4" }
+title   = {}
+hovered = { fg = "#CE8AFF", underline = true }
+
+
+[which]
+mask            = { bg = "#26164B" }
+cand            = { fg = "#DBAA24" }
+rest            = { fg = "#AB9DC8" }
+desc            = { fg = "#806FBE" }
+separator       = "  "
+separator_style = { fg = "#AB9DC8" }
+
+
+[help]
+on      = { fg = "#a8e6cf" }
+run     = { fg = "#CE8AFF" }
+hovered = { reversed = true, bold = true }
+footer  = { fg = "#0A0614", bg = "#AB9DC8" }
+
+
+[spot]
+border   = { fg = "#9B57F4" }
+title    = { fg = "#9B57F4" }
+tbl_col  = { fg = "#a8e6cf" }
+tbl_cell = { fg = "#CE8AFF", bg = "#120B23" }
+
+
+[notify]
+title_info  = { fg = "#a8e6cf" }
+title_warn  = { fg = "#DBAA24" }
+title_error = { fg = "#C0547F" }
+
+
+[filetype]
+rules = [
+    { mime = "image/*", fg = "#DBAA24" },
+    { mime = "video/*", fg = "#C0547F" },
+    { mime = "audio/*", fg = "#C0547F" },
+    { mime = "application/zip",             fg = "#CE8AFF" },
+    { mime = "application/x-tar",           fg = "#CE8AFF" },
+    { mime = "application/x-bzip*",         fg = "#CE8AFF" },
+    { mime = "application/x-bzip2",         fg = "#CE8AFF" },
+    { mime = "application/x-7z-compressed", fg = "#CE8AFF" },
+    { mime = "application/x-rar",           fg = "#CE8AFF" },
+    { mime = "application/x-xz",            fg = "#CE8AFF" },
+    { mime = "application/doc",        fg = "#a8e6cf" },
+    { mime = "application/epub+zip",   fg = "#a8e6cf" },
+    { mime = "application/pdf",        fg = "#a8e6cf" },
+    { mime = "application/rtf",        fg = "#a8e6cf" },
+    { mime = "application/vnd.*",      fg = "#a8e6cf" },
+    { mime = "*", is = "orphan", fg = "#C0547F", bg = "#3C1877" },
+    { mime = "application/*exec*", fg = "#C0547F" },
+    { url = "*", fg = "#F0ECF9" },
+    { url = "*/", fg = "#9B57F4" },
+]

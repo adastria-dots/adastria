@@ -1,0 +1,25 @@
+format = """
+$time $directory
+[Come on. Enough procrastinating. Let's go.](#DBAA24)
+$cmd_duration$character
+"""
+
+add_newline = false
+
+[time]
+disabled = false
+format = "[$time](#9B57F4)"
+time_format = "%d-%m-%Y %H:%M:%S"
+
+[directory]
+format = "[$path](#F0ECF9)"
+truncation_length = 1
+truncate_to_repo = false
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration](#DBAA24) "
+
+[character]
+success_symbol = "[>](#F0ECF9)"
+error_symbol = "[>](#F0ECF9)"

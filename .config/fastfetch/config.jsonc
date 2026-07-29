@@ -1,0 +1,71 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "kitty",
+    "source": "~/.config/fastfetch/fetch.png",
+    "height": 10,
+    "padding": {
+      "right": 0,
+      "left": 0
+    }
+  },
+  "display": {
+    "separator": "",
+    "color": "white",
+    "constants": [
+      "\u001b[38;2;155;87;244m",
+      "\u001b[38;2;206;138;255m",
+      "\u001b[38;2;219;170;36m",
+      "\u001b[37m"
+    ],
+    "key": {
+      "width": 16
+    }
+  },
+  "modules": [
+    {
+      "type": "title",
+      "format": "{$2}{1}{$4}@{$2}{2}"
+    },
+    {
+      "type": "custom",
+      "key": "╭───────────────────────────────────╮"
+    },
+    {
+      "type": "host",
+      "key": "│ host",
+      "format": "{$1}{>20}{$4} │"
+    },
+    {
+      "type": "command",
+      "key": "│ mem",
+      "text": "free -m | awk 'NR==2{printf \"%.2f GiB / %.2f GiB\", $3/1024, $2/1024}'",
+      "format": "{$1}{>20}{$4} │"
+    },
+    {
+      "type": "kernel",
+      "key": "│ kernel",
+      "format": "{$2}{release>20}{$4} │"
+    },
+    {
+      "type": "command",
+      "key": "│ os",
+      "text": "source /etc/os-release && echo \"$NAME $(uname -m)\"",
+      "format": "{$2}{>20}{$4} │"
+    },
+    {
+      "type": "packages",
+      "key": "│ pkg",
+      "format": "{$3}{all>20}{$4} │"
+    },
+    {
+      "type": "wm",
+      "key": "│ wm",
+      "format": "{$3}{>20}{$4} │"
+    },
+    {
+      "type": "custom",
+      "key": "╰───────────────────────────────────╯"
+    }
+  ]
+}

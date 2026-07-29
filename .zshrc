@@ -25,7 +25,7 @@ source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 # 4. CORE FUNCTIONS
 fetch() { deps fastfetch && fastfetch; }
 message() {
-  printf "${KEQING_ACCENT_ANSI:-\e[38;2;155;87;244m}"
+  printf '\e[38;2;155;87;244m'
   cat <<'EOF' | sed 's/^/      /'
 
     __ __                     _                  
@@ -71,7 +71,6 @@ alias ls="ls --color=auto"
 alias update="$KEQING_DOTS_ROOT/scripts/update"
 
 # 8. EXTERNAL SOURCING
-[[ -f "$HOME/.config/keqing-shell/colors.zsh" ]] && source "$HOME/.config/keqing-shell/colors.zsh"
 export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1
 CONDA_SRC="/opt/miniconda3/etc/profile.d/conda.sh"
 [ -f "$CONDA_SRC" ] && source "$CONDA_SRC"
