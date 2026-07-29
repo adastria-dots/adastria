@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import {
   Box,
   ClientWindow,
@@ -36,10 +35,6 @@ import {
   WINDOW_STATE_WORKSPACE_OPACITY,
 } from "./window-manager";
 
-declare module "node:fs" {
-  export function readFileSync(path: string, encoding: string): string;
-}
-
 interface ThemeColors {
   accent: string;
   accentAlt: string;
@@ -47,30 +42,14 @@ interface ThemeColors {
   textDim: string;
 }
 
-const THEME_FALLBACK: ThemeColors = {
+// Static palette, matches the fallback block in .config/hypr/hyprland.lua's
+// `col` table — ShojiWM's runtime has no node:fs/file-read capability, so
+// this can't follow ~/.config/keqing-shell/colors.json live.
+const theme: ThemeColors = {
   accent: "#7B2FE8",
   accentAlt: "#C8942A",
   lavender: "#5E50A0",
   textDim: "#5E50A0",
-};
-
-function readCurrentTheme(): Record<string, string> {
-  try {
-    const path = `${process.env.HOME}/.config/keqing-shell/colors.json`;
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return parsed.current ?? {};
-  } catch {
-    return {};
-  }
-}
-
-const currentTheme = readCurrentTheme();
-
-const theme: ThemeColors = {
-  accent: currentTheme.accent ?? THEME_FALLBACK.accent,
-  accentAlt: currentTheme.accentAlt ?? THEME_FALLBACK.accentAlt,
-  lavender: currentTheme.lavender ?? THEME_FALLBACK.lavender,
-  textDim: currentTheme.lavender ?? THEME_FALLBACK.textDim,
 };
 
 COMPOSITOR.env.apply({
@@ -395,6 +374,18 @@ COMPOSITOR.key.bind("dolphin", "Super+E", () => {
   COMPOSITOR.process.spawn({ command: ["kitty", "yazi"] });
 });
 
+COMPOSITOR.key.bind("bar", "Super+A", () => {
+  COMPOSITOR.process.spawn({ command: ["keqing-shell", "bar"] });
+});
+COMPOSITOR.key.bind("bar-all", "Super+Shift+A", () => {
+  COMPOSITOR.process.spawn({ command: ["keqing-shell", "bar-all"] });
+});
+COMPOSITOR.key.bind("dock", "Super+D", () => {
+  COMPOSITOR.process.spawn({ command: ["keqing-shell", "dock"] });
+});
+COMPOSITOR.key.bind("dock-all", "Super+Shift+D", () => {
+  COMPOSITOR.process.spawn({ command: ["keqing-shell", "dock-all"] });
+});
 COMPOSITOR.key.bind("controlcenter", "Super+Shift+C", () => {
   COMPOSITOR.process.spawn({ command: ["keqing-shell", "controlcenter"] });
 });
@@ -420,9 +411,6 @@ COMPOSITOR.key.bind("launcher", "Shift+Space", () => {
   COMPOSITOR.process.spawn({ command: ["keqing-shell", "launcher"] });
 });
 
-COMPOSITOR.key.bind("zen-browser-private", "Super+Shift+B", () => {
-  COMPOSITOR.process.spawn({ command: ["zen-browser", "--private"] });
-});
 COMPOSITOR.key.bind("code", "Super+C", () => {
   COMPOSITOR.process.spawn({ command: ["code"] });
 });
@@ -459,12 +447,6 @@ COMPOSITOR.key.bind("window-monocle-toggle", "Super+F", () => {
 });
 COMPOSITOR.key.bind("window-close", "Super+W", () => {
   HYBRID_WINDOW_MANAGER.closeFocusedWindow();
-});
-COMPOSITOR.key.bind("tile-focus-left", "Super+Ctrl+Left", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(-1);
-});
-COMPOSITOR.key.bind("tile-focus-right", "Super+Ctrl+Right", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(1);
 });
 COMPOSITOR.key.bind("tile-move-left", "Super+Shift+Left", () => {
   HYBRID_WINDOW_MANAGER.moveFocusedTile(-1);
