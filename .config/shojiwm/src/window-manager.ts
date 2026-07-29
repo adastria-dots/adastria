@@ -288,6 +288,10 @@ export const TILE_DRAG_WORKSPACE_SWITCH_INTERVAL_MS = 420;
 // Also used between tile and screen edge, so both gaps stay consistent.
 export const TILE_GAP = 20;
 export const TILE_MAX_COLUMNS = 2;
+// Clamp for HybridWindowManager.bumpColumns' per-workspace override, mirrors
+// Hyprland's scrollumns layout.lua M.bump (math.max(1, math.min(6, ...))).
+export const TILE_COLUMNS_MIN = 1;
+export const TILE_COLUMNS_MAX = 6;
 export const WORKSPACES_PER_MONITOR = 10;
 export const TILE_MIN_WIDTH = 240;
 export const SNAP_EDGE_PX = 16;
@@ -641,6 +645,8 @@ export class Workspace {
   private scrollOffset = 0;
   private kineticScrollPoll: PollHandle | null = null;
   private kineticScrollToken = 0;
+  private columnOverride: number | null = null;
+  private strictColumns = false;
   public monitor: string;
 
   public constructor(
@@ -1080,7 +1086,14 @@ export class Workspace {
     const viewportRect = this.tileViewportRect();
     this.lastAppliedTileViewportRect = snapshotManagedRect(viewportRect);
     const tileHeight = read(viewportRect.height);
-    let nextX = read(viewportRect.x) - this.scrollOffset;
+    const viewportWidth = read(viewportRect.width);
+    const contentWidth = this.tileContentWidth(tileable, viewportRect);
+    // Ports Hyprland's scrollumns layout.lua `center_shift` — strict mode can
+    // pad visibleCols past the actual window count, leaving the row narrower
+    // than the viewport; center it instead of leaving it flush left.
+    const centerShift =
+      contentWidth < viewportWidth ? (viewportWidth - contentWidth) / 2 : 0;
+    let nextX = read(viewportRect.x) - this.scrollOffset + centerShift;
     const appliedRects: Record<string, ManagedWindowRect> = {};
     this.lastDraggingSlotRect = null;
 
@@ -1244,7 +1257,10 @@ export class Workspace {
       return read(this.monocleRootRect(window).width);
     }
 
-    const visibleCols = Math.max(1, Math.min(tileCount, TILE_MAX_COLUMNS));
+    const maxColumns = this.effectiveMaxColumns();
+    const visibleCols = this.strictColumns
+      ? maxColumns
+      : Math.max(1, Math.min(tileCount, maxColumns));
     const colWidth =
       (read(viewportRect.width) - (visibleCols - 1) * TILE_GAP) / visibleCols;
     const minWidth = this.minTileWidth(window, viewportRect);
@@ -1253,6 +1269,37 @@ export class Workspace {
       minWidth,
       Math.max(minWidth, this.maxTileWidth(window)),
     );
+  }
+
+  private effectiveMaxColumns(): number {
+    return this.columnOverride ?? TILE_MAX_COLUMNS;
+  }
+
+  // Ports Hyprland's scrollumns layout.lua M.bump/toggle_strict/reset —
+  // per-workspace column count + strict-padding override, same [1,6] clamp.
+  public bumpColumns(delta: number): number {
+    this.columnOverride = clamp(
+      this.effectiveMaxColumns() + delta,
+      TILE_COLUMNS_MIN,
+      TILE_COLUMNS_MAX,
+    );
+    this.applyLayout();
+    return this.columnOverride;
+  }
+
+  public toggleStrictColumns(): boolean {
+    this.strictColumns = !this.strictColumns;
+    this.applyLayout();
+    return this.strictColumns;
+  }
+
+  public resetLayout(): void {
+    this.columnOverride = null;
+    this.strictColumns = false;
+    for (const window of this.windows) {
+      window.state[WINDOW_STATE_MONOCLE].set(false);
+    }
+    this.applyLayout();
   }
 
   private monocleTileRect(
@@ -2634,6 +2681,36 @@ export class HybridWindowManager {
       }
       return;
     }
+  }
+
+  // Ports Hyprland's scrollumns layout.lua bump/toggle_strict/reset —
+  // operates on the active workspace of the current monitor, same as
+  // `hl.get_active_workspace()` there. Return values feed the notify-send
+  // calls layout.lua makes after each (index.tsx), null if no workspace is
+  // resolvable (e.g. no connected outputs yet).
+  public bumpColumns(delta: number): { index: number; columns: number } | null {
+    const workspace = this.workspaceForMonitor(this.currentMonitor);
+    if (!workspace) {
+      return null;
+    }
+    return { index: workspace.index, columns: workspace.bumpColumns(delta) };
+  }
+
+  public toggleStrictColumns(): { index: number; strict: boolean } | null {
+    const workspace = this.workspaceForMonitor(this.currentMonitor);
+    if (!workspace) {
+      return null;
+    }
+    return { index: workspace.index, strict: workspace.toggleStrictColumns() };
+  }
+
+  public resetWorkspaceLayout(): { index: number } | null {
+    const workspace = this.workspaceForMonitor(this.currentMonitor);
+    if (!workspace) {
+      return null;
+    }
+    workspace.resetLayout();
+    return { index: workspace.index };
   }
 
   private beginInteractiveExitMonocle(window: WaylandWindow): boolean {

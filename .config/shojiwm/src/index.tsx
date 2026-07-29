@@ -40,6 +40,7 @@ interface ThemeColors {
   accentAlt: string;
   lavender: string;
   textDim: string;
+  text: string;
 }
 
 // Static palette, matches the fallback block in .config/hypr/hyprland.lua's
@@ -50,6 +51,7 @@ const theme: ThemeColors = {
   accentAlt: "#C8942A",
   lavender: "#5E50A0",
   textDim: "#5E50A0",
+  text: "#F0ECF8",
 };
 
 COMPOSITOR.env.apply({
@@ -154,6 +156,11 @@ COMPOSITOR.onEnable((event) => {
     }
   }
 });
+
+// Ports Hyprland's layout.lua `notify` helper (notify-send, 1.5s).
+function notify(text: string) {
+  COMPOSITOR.process.spawn({ command: ["notify-send", "-t", "1500", text] });
+}
 
 // Full message table: local/shojiwm/config.md.
 const WORKSPACE_IPC = createIpcServer();
@@ -470,6 +477,36 @@ COMPOSITOR.key.bind("window-fullscreen-toggle", "Super+Shift+F", () => {
 COMPOSITOR.key.bind("window-float-toggle", "Super+V", () => {
   HYBRID_WINDOW_MANAGER.toggleFocusedWindowFloating();
 });
+COMPOSITOR.key.bind("tile-columns-increase", "Super+equal", () => {
+  const result = HYBRID_WINDOW_MANAGER.bumpColumns(1);
+  if (result) {
+    notify(`Workspace: ${result.index}\nColumns: ${result.columns}`);
+  }
+  scheduleWorkspaceBroadcast();
+});
+COMPOSITOR.key.bind("tile-columns-decrease", "Super+minus", () => {
+  const result = HYBRID_WINDOW_MANAGER.bumpColumns(-1);
+  if (result) {
+    notify(`Workspace: ${result.index}\nColumns: ${result.columns}`);
+  }
+  scheduleWorkspaceBroadcast();
+});
+COMPOSITOR.key.bind("tile-columns-strict-toggle", "Super+Shift+equal", () => {
+  const result = HYBRID_WINDOW_MANAGER.toggleStrictColumns();
+  if (result) {
+    notify(
+      `Workspace: ${result.index}\nStrict Columns: ${result.strict ? "On" : "Off"}`,
+    );
+  }
+  scheduleWorkspaceBroadcast();
+});
+COMPOSITOR.key.bind("tile-columns-reset", "Super+Shift+minus", () => {
+  const result = HYBRID_WINDOW_MANAGER.resetWorkspaceLayout();
+  if (result) {
+    notify(`Workspace: ${result.index}\nReset to defaults`);
+  }
+  scheduleWorkspaceBroadcast();
+});
 
 for (let i = 1; i <= 10; i++) {
   const key = i % 10;
@@ -719,14 +756,19 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   );
 
   const monocle = window.state[WINDOW_STATE_MONOCLE];
+  // Matches Hyprland's window_rule float match (hyprland.lua) — flat
+  // theme.text border, no focus/unfocused split, overrides monocle/accent.
+  const floating = computed(() => !window.state[WINDOW_STATE_TILED]());
   const borderColor = computed(() =>
-    monocle()
-      ? window.isFocused()
-        ? theme.accentAlt
-        : `${theme.accentAlt}AA`
-      : window.isFocused()
-        ? theme.accent
-        : `${theme.textDim}AA`,
+    floating()
+      ? theme.text
+      : monocle()
+        ? window.isFocused()
+          ? theme.accentAlt
+          : `${theme.accentAlt}AA`
+        : window.isFocused()
+          ? theme.accent
+          : `${theme.textDim}AA`,
   );
 
   const backgroundShader = compileEffect({
