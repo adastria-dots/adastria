@@ -632,6 +632,7 @@ export class Workspace {
     window: WaylandWindow,
   ) => ManagedWindowRect;
   private readonly activeWorkspaceIndex: (monitor: string) => number;
+  private readonly defaultMaxColumns: (monitor: string) => number;
   private readonly restoredWindowStateById = new Map<
     string,
     WorkspaceWindowSnapshot
@@ -655,12 +656,14 @@ export class Workspace {
     naturalRootRect: (window: WaylandWindow) => ManagedWindowRect,
     monocleRootRect: (window: WaylandWindow) => ManagedWindowRect,
     activeWorkspaceIndex: (monitor: string) => number,
+    defaultMaxColumns: (monitor: string) => number,
   ) {
     this.index = index;
     this.monitor = monitor;
     this.naturalRootRect = naturalRootRect;
     this.monocleRootRect = monocleRootRect;
     this.activeWorkspaceIndex = activeWorkspaceIndex;
+    this.defaultMaxColumns = defaultMaxColumns;
   }
 
   // ==========
@@ -1272,7 +1275,7 @@ export class Workspace {
   }
 
   private effectiveMaxColumns(): number {
-    return this.columnOverride ?? TILE_MAX_COLUMNS;
+    return this.columnOverride ?? this.defaultMaxColumns(this.monitor);
   }
 
   // Ports Hyprland's scrollumns layout.lua M.bump/toggle_strict/reset —
@@ -1996,6 +1999,10 @@ export class HybridWindowManager {
   private readonly activeWorkspaceByMonitor = new Map<string, number>();
   private readonly windowStack = createWindowStack();
   private readonly naturalRootRect: (rect: WaylandWindow) => ManagedWindowRect;
+  // Per-monitor default column count, ports Hyprland's layout.lua
+  // resolve_max_cols (devices/*.lua's `L.register({ [name] = cols })`).
+  // Falls back to TILE_MAX_COLUMNS for any monitor not listed.
+  private readonly columnsByMonitor: Record<string, number>;
   // Lets the dock pick the most-recently-used window of an app.
   private readonly lastFocusedAt = new Map<string, number>();
   private readonly pendingInitialFocusByWindowId = new Map<string, number>();
@@ -2033,10 +2040,16 @@ export class HybridWindowManager {
 
   public constructor(
     naturalRootRect: (rect: WaylandWindow) => ManagedWindowRect,
+    columnsByMonitor: Record<string, number> = {},
   ) {
     this.currentMonitor = "";
     this.naturalRootRect = naturalRootRect;
+    this.columnsByMonitor = columnsByMonitor;
     this.syncWorkspaces();
+  }
+
+  private defaultMaxColumnsForMonitor(monitor: string): number {
+    return this.columnsByMonitor[monitor] ?? TILE_MAX_COLUMNS;
   }
 
   // ======
@@ -3447,6 +3460,7 @@ export class HybridWindowManager {
         this.naturalRootRect,
         (window) => this.monocleRectForWindow(window, monitor),
         (monitor) => this.getActiveWorkspaceIndex(monitor),
+        (monitor) => this.defaultMaxColumnsForMonitor(monitor),
       );
       this.workspaces.set(key, workspace);
     }

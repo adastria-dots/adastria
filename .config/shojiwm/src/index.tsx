@@ -90,7 +90,18 @@ COMPOSITOR.window.decoration.configure((window, context) => {
   return { mode: "server" };
 });
 
-const HYBRID_WINDOW_MANAGER = new HybridWindowManager(naturalRootRect);
+// Per-monitor default column count, ports Hyprland's devices/*.lua
+// `L.register({ [name] = cols })` (e.g. hq9afk.lua's `{ ["DP-3"] = 3,
+// ["DP-2"] = 2 }`). Empty here: this machine (hq9afk-letsnote) is
+// single-output and Hyprland's own device config for it is a flat
+// `L.register(2)`, same as TILE_MAX_COLUMNS already — nothing to override.
+// Add `{ [outputName]: columns }` entries if that changes.
+const TILE_COLUMNS_BY_MONITOR: Record<string, number> = {};
+
+const HYBRID_WINDOW_MANAGER = new HybridWindowManager(
+  naturalRootRect,
+  TILE_COLUMNS_BY_MONITOR,
+);
 const HOT_RELOAD_WINDOW_MANAGER_STATE = "config.hybrid-window-manager";
 const FULLSCREEN_Z_INDEX = 2_000_000_000;
 
