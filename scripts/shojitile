@@ -2,7 +2,7 @@
 
 # Keqing-dots terminal control for ShojiWM (talks to its IPC socket)
 
-deps socat jq || exit 1
+deps socat jq perl || exit 1
 
 SOCK="${XDG_RUNTIME_DIR:-/tmp}/shojiwm-${WAYLAND_DISPLAY:-wayland-0}.sock"
 
@@ -19,14 +19,28 @@ _workspace_params() {
     echo "\"monitor\":$(_json_str "$2"),\"index\":$3"
 }
 
+# Collapses jq's one-number-per-line array pretty-printing to one line, for
+# fields that are just a coordinate/size pair.
+_compact_pairs() {
+    perl -0777 -pe 's/"(position|size)": \[\n\s*(-?\d+),\n\s*(-?\d+)\n\s*\]/"$1": [$2, $3]/g'
+}
+
+_windows_json() {
+    _query '{"id":1,"method":"workspaces.get"}' | jq '
+        [.result.monitors[] as $m |
+         $m.workspaces[] as $w |
+         $w.windows[] |
+         {id, title, appId, monitor: $m.name, workspace: $w.index,
+          active, urgent, monocle, position: [.position.x, .position.y], size: [.size.width, .size.height]}]
+    ' | _compact_pairs
+}
+
 case "$1" in
-    clients)
+    windows) _windows_json ;;
+    activewindow) _windows_json | jq '.[] | select(.active)' | _compact_pairs ;;
+    activeworkspace)
         _query '{"id":1,"method":"workspaces.get"}' | jq '
-            [.result.monitors[] as $m |
-             $m.workspaces[] as $w |
-             $w.windows[] |
-             {id, title, appId, monitor: $m.name, workspace: $w.index,
-              focused, urgent, monocle, at: [.rect.x, .rect.y], size: [.rect.width, .rect.height]}]
+            [.result.monitors[] | {monitor: .name, workspace: .active}]
         '
         ;;
     switch) _send "{\"method\":\"workspaces.switch\",\"params\":{\"direction\":${2:-1}}}" ;;
@@ -49,5 +63,5 @@ case "$1" in
         [[ -n "$2" ]] || { echo "usage: shojitile aw <windowId>" >&2; exit 1; }
         _send "{\"method\":\"windows.activate\",\"params\":{\"windowId\":$(_json_str "$2")}}"
         ;;
-    *) echo "usage: shojitile <clients|switch [-1|1]|fw <monitor> <index>|mw <monitor> <index> [q]|sw <monitor> <index>|mi <monitor> <index>|cw [a]|aw <windowId>>" >&2; exit 1 ;;
+    *) echo "usage: shojitile <windows|activewindow|activeworkspace|switch [-1|1]|fw <monitor> <index>|mw <monitor> <index> [q]|sw <monitor> <index>|mi <monitor> <index>|cw [a]|aw <windowId>>" >&2; exit 1 ;;
 esac

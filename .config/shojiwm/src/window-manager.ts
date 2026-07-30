@@ -342,11 +342,12 @@ export interface WorkspacesViewWindow {
   id: string;
   appId?: string;
   title: string;
-  focused: boolean;
+  active: boolean;
   urgent: boolean;
   monocle: boolean;
   lastFocusedAt: number;
-  rect: ManagedWindowRect;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
 }
 
 export interface WorkspacesViewWorkspace {
@@ -2696,11 +2697,6 @@ export class HybridWindowManager {
     }
   }
 
-  // Ports Hyprland's scrollumns layout.lua bump/toggle_strict/reset —
-  // operates on the active workspace of the current monitor, same as
-  // `hl.get_active_workspace()` there. Return values feed the notify-send
-  // calls layout.lua makes after each (index.tsx), null if no workspace is
-  // resolvable (e.g. no connected outputs yet).
   public bumpColumns(delta: number): { index: number; columns: number } | null {
     const workspace = this.workspaceForMonitor(this.currentMonitor);
     if (!workspace) {
@@ -4255,16 +4251,20 @@ export class HybridWindowManager {
       const list = byMonitor.get(workspace.monitor) ?? [];
       const windows: WorkspacesViewWindow[] = workspace
         .listWindows()
-        .map((window) => ({
-          id: window.id,
-          appId: window.appId(),
-          title: window.title(),
-          focused: window.isFocused(),
-          urgent: window.state[WINDOW_STATE_URGENT](),
-          monocle: window.state[WINDOW_STATE_MONOCLE](),
-          lastFocusedAt: this.lastFocusedAt.get(window.id) ?? 0,
-          rect: window.state[WINDOW_STATE_RECT](),
-        }));
+        .map((window) => {
+          const rect = window.state[WINDOW_STATE_RECT]();
+          return {
+            id: window.id,
+            appId: window.appId(),
+            title: window.title(),
+            active: window.isFocused(),
+            urgent: window.state[WINDOW_STATE_URGENT](),
+            monocle: window.state[WINDOW_STATE_MONOCLE](),
+            lastFocusedAt: this.lastFocusedAt.get(window.id) ?? 0,
+            position: { x: read(rect.x), y: read(rect.y) },
+            size: { width: read(rect.width), height: read(rect.height) },
+          };
+        });
       list.push({
         index: workspace.index,
         windowCount: workspace.windowCount(),
