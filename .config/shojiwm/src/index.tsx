@@ -756,8 +756,6 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   );
 
   const monocle = window.state[WINDOW_STATE_MONOCLE];
-  // Matches Hyprland's window_rule float match (hyprland.lua) — flat
-  // theme.text border, no focus/unfocused split, overrides monocle/accent.
   const floating = computed(() => !window.state[WINDOW_STATE_TILED]());
   const borderColor = computed(() =>
     floating()
