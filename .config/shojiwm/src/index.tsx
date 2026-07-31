@@ -43,7 +43,7 @@ interface ThemeColors {
   text: string;
 }
 
-// Static palette, matches the `col` table in .config/hypr/hyprland.lua.
+// Color Palette
 const theme: ThemeColors = {
   accent: "#7B2FE8",
   accentAlt: "#C8942A",
@@ -88,12 +88,7 @@ COMPOSITOR.window.decoration.configure((window, context) => {
   return { mode: "server" };
 });
 
-// Per-monitor default column count, ports Hyprland's devices/*.lua
-// `L.register({ [name] = cols })` (e.g. hq9afk.lua's `{ ["DP-3"] = 3,
-// ["DP-2"] = 2 }`). Empty here: this machine (hq9afk-letsnote) is
-// single-output and Hyprland's own device config for it is a flat
-// `L.register(2)`, same as TILE_MAX_COLUMNS already — nothing to override.
-// Add `{ [outputName]: columns }` entries if that changes.
+// Per-monitor default column count
 const TILE_COLUMNS_BY_MONITOR: Record<string, number> = {};
 
 const HYBRID_WINDOW_MANAGER = new HybridWindowManager(
@@ -166,7 +161,7 @@ COMPOSITOR.onEnable((event) => {
   }
 });
 
-// Ports Hyprland's layout.lua `notify` helper (notify-send, 1.5s).
+// Notify helper, sends a 1.5s notification
 function notify(text: string) {
   COMPOSITOR.process.spawn({ command: ["notify-send", "-t", "1500", text] });
 }
@@ -791,6 +786,12 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     ],
   });
 
+  const WINDOW_OPACITY_RULES: Record<string, number> = {
+    "code-oss": 0.7,
+  };
+  const ruleOpacity = WINDOW_OPACITY_RULES[window.appId() ?? ""] ?? 1;
+  const effectiveOpacity = computed(() => workspaceOpacity() * ruleOpacity);
+
   var innerComponents = <ClientWindow />;
 
   const TERMINALS = ["kitty", "ghostty"];
@@ -810,7 +811,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
         rect={managedRect}
         zIndex={FULLSCREEN_Z_INDEX}
         visibleOutputs={window.state[WINDOW_STATE_VISIBLE_OUTPUTS]}
-        opacity={workspaceOpacity}
+        opacity={effectiveOpacity}
         forceRectSize={forceRectSize}
         tiled={tiled}
         idle={inactive}
@@ -829,7 +830,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
         rect={managedRect}
         zIndex={HYBRID_WINDOW_MANAGER.getWindowZIndex(window)}
         visibleOutputs={window.state[WINDOW_STATE_VISIBLE_OUTPUTS]}
-        opacity={workspaceOpacity}
+        opacity={effectiveOpacity}
         forceRectSize={forceRectSize}
         tiled={tiled}
         idle={inactive}
@@ -845,7 +846,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
       rect={managedRect}
       zIndex={HYBRID_WINDOW_MANAGER.getWindowZIndex(window)}
       visibleOutputs={window.state[WINDOW_STATE_VISIBLE_OUTPUTS]}
-      opacity={workspaceOpacity}
+      opacity={effectiveOpacity}
       forceRectSize={forceRectSize}
       tiled={tiled}
       idle={inactive}
