@@ -2089,6 +2089,9 @@ export class HybridWindowManager {
     this.windowStack.add(window);
 
     window.setCloseAnimationDuration(OPEN_CLOSE_ANIMATION_DURATION);
+    console.info(
+      `window-lifecycle open windowId=${window.id} appId=${window.appId()} title=${window.title.peek()}`,
+    );
   }
 
   public onFirstCommit(window: WaylandWindow) {
@@ -2141,6 +2144,9 @@ export class HybridWindowManager {
   }
 
   public onClose(window: WaylandWindow) {
+    console.info(
+      `window-lifecycle close windowId=${window.id} appId=${window.appId()} title=${window.title.peek()}`,
+    );
     this.windowStack.remove(window);
     for (const workspace of this.workspaces.values()) {
       if (workspace.removeWindow(window) !== undefined) {

@@ -43,9 +43,7 @@ interface ThemeColors {
   text: string;
 }
 
-// Static palette, matches the fallback block in .config/hypr/hyprland.lua's
-// `col` table — ShojiWM's runtime has no node:fs/file-read capability, so
-// this can't follow ~/.config/keqing-shell/colors.json live.
+// Static palette, matches the `col` table in .config/hypr/hyprland.lua.
 const theme: ThemeColors = {
   accent: "#7B2FE8",
   accentAlt: "#C8942A",
@@ -770,7 +768,9 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   const floating = computed(() => !window.state[WINDOW_STATE_TILED]());
   const borderColor = computed(() =>
     floating()
-      ? theme.text
+      ? window.isFocused()
+        ? "#FFFFFF"
+        : "#FFFFFFAA"
       : monocle()
         ? window.isFocused()
           ? theme.accentAlt
