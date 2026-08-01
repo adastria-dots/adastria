@@ -20,14 +20,14 @@ import {
 import type { ManagedWindowRect } from "shoji_wm/types";
 import { createIpcServer } from "shoji_wm/ipc";
 import {
-  HybridWindowManager,
+  WindowManager,
   WINDOW_BORDER_PX,
   WINDOW_STATE_FULLSCREEN,
   WINDOW_STATE_MINIMIZED,
   WINDOW_STATE_MINIMIZE_VISUAL_IDLE,
   WINDOW_STATE_MONOCLE,
   WINDOW_STATE_TILE_DRAGGING,
-  WINDOW_STATE_TILED,
+  WINDOW_STATE_FLOATING,
   WINDOW_STATE_VISIBLE_OUTPUTS,
   WINDOW_STATE_RECT,
   WINDOW_STATE_WORKSPACE_VISIBLE,
@@ -91,11 +91,11 @@ COMPOSITOR.window.decoration.configure((window, context) => {
 // Per-monitor default column count
 const TILE_COLUMNS_BY_MONITOR: Record<string, number> = {};
 
-const HYBRID_WINDOW_MANAGER = new HybridWindowManager(
+const WINDOW_MANAGER = new WindowManager(
   naturalRootRect,
   TILE_COLUMNS_BY_MONITOR,
 );
-const HOT_RELOAD_WINDOW_MANAGER_STATE = "config.hybrid-window-manager";
+const HOT_RELOAD_WINDOW_MANAGER_STATE = "config.window-manager";
 const FULLSCREEN_Z_INDEX = 2_000_000_000;
 
 const LIQUID_RIPPLE_FALLBACK_REFRESH_RATE = 120;
@@ -143,7 +143,7 @@ COMPOSITOR.onDisable((event) => {
   liquidRipplePoll = null;
 
   if (event.isReloading) {
-    const snapshot = HYBRID_WINDOW_MANAGER.snapshot();
+    const snapshot = WINDOW_MANAGER.snapshot();
     event.persist(HOT_RELOAD_WINDOW_MANAGER_STATE, snapshot);
   }
 });
@@ -153,10 +153,10 @@ COMPOSITOR.onEnable((event) => {
 
   if (event.isReloading) {
     const snapshot = event.restore<
-      ReturnType<typeof HYBRID_WINDOW_MANAGER.snapshot>
+      ReturnType<typeof WINDOW_MANAGER.snapshot>
     >(HOT_RELOAD_WINDOW_MANAGER_STATE);
     if (snapshot) {
-      HYBRID_WINDOW_MANAGER.restore(snapshot);
+      WINDOW_MANAGER.restore(snapshot);
     }
   }
 });
@@ -172,7 +172,7 @@ let lastWorkspacesJson = "";
 let workspaceBroadcastQueued = false;
 
 function broadcastWorkspaces() {
-  const view = HYBRID_WINDOW_MANAGER.viewForIpc();
+  const view = WINDOW_MANAGER.viewForIpc();
   const json = JSON.stringify(view);
   if (json === lastWorkspacesJson) {
     return;
@@ -199,7 +199,7 @@ function scheduleWorkspaceBroadcast() {
 }
 
 COMPOSITOR.workspace.configure(() => {
-  const view = HYBRID_WINDOW_MANAGER.viewForIpc();
+  const view = WINDOW_MANAGER.viewForIpc();
   return {
     groups: view.monitors.map((monitor) => ({
       id: monitor.name,
@@ -221,22 +221,22 @@ COMPOSITOR.workspace.event.onActivate((event) => {
   if (!monitor || !Number.isInteger(index) || index < 1) {
     return;
   }
-  HYBRID_WINDOW_MANAGER.activate(monitor, index);
+  WINDOW_MANAGER.activate(monitor, index);
   scheduleWorkspaceBroadcast();
 });
 
 WORKSPACE_IPC.handle("workspaces.get", () =>
-  HYBRID_WINDOW_MANAGER.viewForIpc(),
+  WINDOW_MANAGER.viewForIpc(),
 );
 WORKSPACE_IPC.handle("workspaces.switch", (params) => {
   const direction = (params as { direction?: number } | undefined)?.direction;
-  HYBRID_WINDOW_MANAGER.switchWorkspace(direction === -1 ? -1 : 1);
+  WINDOW_MANAGER.switchWorkspace(direction === -1 ? -1 : 1);
   scheduleWorkspaceBroadcast();
 });
 WORKSPACE_IPC.handle("workspaces.activate", (params) => {
   const request = params as { monitor?: string; index?: number } | undefined;
   if (request?.monitor && typeof request.index === "number") {
-    HYBRID_WINDOW_MANAGER.activate(request.monitor, request.index);
+    WINDOW_MANAGER.activate(request.monitor, request.index);
     scheduleWorkspaceBroadcast();
   }
 });
@@ -245,7 +245,7 @@ WORKSPACE_IPC.handle("workspaces.moveWindow", (params) => {
     | { monitor?: string; index?: number; follow?: boolean }
     | undefined;
   if (request?.monitor && typeof request.index === "number") {
-    HYBRID_WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
+    WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
       request.monitor,
       request.index,
       { follow: request.follow },
@@ -256,27 +256,123 @@ WORKSPACE_IPC.handle("workspaces.moveWindow", (params) => {
 WORKSPACE_IPC.handle("workspaces.swap", (params) => {
   const request = params as { monitor?: string; index?: number } | undefined;
   if (request?.monitor && typeof request.index === "number") {
-    HYBRID_WINDOW_MANAGER.swapWorkspace(request.monitor, request.index);
+    WINDOW_MANAGER.swapWorkspace(request.monitor, request.index);
     scheduleWorkspaceBroadcast();
   }
 });
 WORKSPACE_IPC.handle("workspaces.moveInto", (params) => {
   const request = params as { monitor?: string; index?: number } | undefined;
   if (request?.monitor && typeof request.index === "number") {
-    HYBRID_WINDOW_MANAGER.moveWorkspaceInto(request.monitor, request.index);
+    WINDOW_MANAGER.moveWorkspaceInto(request.monitor, request.index);
     scheduleWorkspaceBroadcast();
   }
 });
+WORKSPACE_IPC.handle("workspaces.clear", (params) => {
+  const request = params as
+    | { monitor?: string; index?: number; scope?: string }
+    | undefined;
+  WINDOW_MANAGER.clearWorkspace(
+    request?.monitor,
+    request?.index,
+    request?.scope === "all" ? "all" : undefined,
+  );
+  scheduleWorkspaceBroadcast();
+});
 WORKSPACE_IPC.handle("windows.closeCurrent", () => {
-  HYBRID_WINDOW_MANAGER.closeCurrentWorkspaceWindows();
+  WINDOW_MANAGER.closeCurrentWorkspaceWindows();
 });
 WORKSPACE_IPC.handle("windows.closeAll", () => {
-  HYBRID_WINDOW_MANAGER.closeAllWindows();
+  WINDOW_MANAGER.closeAllWindows();
+});
+WORKSPACE_IPC.handle("windows.close", (params) => {
+  const windowId = (params as { windowId?: string } | undefined)?.windowId;
+  if (typeof windowId === "string") {
+    WINDOW_MANAGER.closeWindowById(windowId);
+  } else {
+    WINDOW_MANAGER.closeFocusedWindow();
+  }
+  scheduleWorkspaceBroadcast();
+});
+WORKSPACE_IPC.handle("windows.focusDirection", (params) => {
+  const direction = (params as { direction?: string } | undefined)?.direction;
+  if (
+    direction === "up" ||
+    direction === "down" ||
+    direction === "left" ||
+    direction === "right"
+  ) {
+    WINDOW_MANAGER.focusMonitorInDirection(direction);
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("windows.moveDirection", (params) => {
+  const request = params as
+    | { windowId?: string; direction?: string }
+    | undefined;
+  if (
+    request?.direction === "up" ||
+    request?.direction === "down" ||
+    request?.direction === "left" ||
+    request?.direction === "right"
+  ) {
+    WINDOW_MANAGER.moveWindowInDirection(request.direction, request.windowId);
+    scheduleWorkspaceBroadcast();
+  }
 });
 WORKSPACE_IPC.handle("windows.activate", (params) => {
   const windowId = (params as { windowId?: string } | undefined)?.windowId;
   if (typeof windowId === "string") {
-    HYBRID_WINDOW_MANAGER.activateWindowById(windowId);
+    WINDOW_MANAGER.activateWindowById(windowId);
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("windows.moveTo", (params) => {
+  const request = params as
+    | { windowId?: string; monitor?: string; index?: number; follow?: boolean }
+    | undefined;
+  if (
+    typeof request?.windowId === "string" &&
+    request.monitor &&
+    typeof request.index === "number"
+  ) {
+    WINDOW_MANAGER.moveWindowById(
+      request.windowId,
+      request.monitor,
+      request.index,
+      { follow: request.follow },
+    );
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("windows.moveManyTo", (params) => {
+  const request = params as
+    | { windowIds?: string[]; monitor?: string; index?: number }
+    | undefined;
+  if (
+    Array.isArray(request?.windowIds) &&
+    request.monitor &&
+    typeof request.index === "number"
+  ) {
+    WINDOW_MANAGER.moveWindowsById(
+      request.windowIds,
+      request.monitor,
+      request.index,
+    );
+    scheduleWorkspaceBroadcast();
+  }
+});
+WORKSPACE_IPC.handle("windows.swap", (params) => {
+  const request = params as
+    | { windowIdA?: string; windowIdB?: string }
+    | undefined;
+  if (
+    typeof request?.windowIdA === "string" &&
+    typeof request?.windowIdB === "string"
+  ) {
+    WINDOW_MANAGER.swapWindowsById(
+      request.windowIdA,
+      request.windowIdB,
+    );
     scheduleWorkspaceBroadcast();
   }
 });
@@ -337,7 +433,7 @@ function updateDockProximity(monitor: string, inside: boolean) {
 
 // Bar renders the rounded snap-preview overlay from this broadcast.
 let lastSnapJson = "";
-HYBRID_WINDOW_MANAGER.setSnapPreviewBroadcaster((preview) => {
+WINDOW_MANAGER.setSnapPreviewBroadcaster((preview) => {
   const json = JSON.stringify(preview);
   if (json === lastSnapJson) {
     return;
@@ -346,7 +442,7 @@ HYBRID_WINDOW_MANAGER.setSnapPreviewBroadcaster((preview) => {
   WORKSPACE_IPC.broadcast("snap.preview", preview);
 });
 
-HYBRID_WINDOW_MANAGER.setWorkspaceChangeBroadcaster(() => {
+WINDOW_MANAGER.setWorkspaceChangeBroadcaster(() => {
   scheduleWorkspaceBroadcast();
 });
 
@@ -442,61 +538,61 @@ COMPOSITOR.key.bind("screenshot-region-freeze", "Super+Shift+S", () => {
 });
 
 COMPOSITOR.key.bind("tile-focus-left-quick", "Super+Left", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(-1);
+  WINDOW_MANAGER.focusAdjacent(-1);
 });
 COMPOSITOR.key.bind("tile-focus-right-quick", "Super+Right", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(1);
+  WINDOW_MANAGER.focusAdjacent(1);
 });
 COMPOSITOR.key.bind("tile-focus-up", "Super+Up", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(-1);
+  WINDOW_MANAGER.focusAdjacent(-1);
 });
 COMPOSITOR.key.bind("tile-focus-down", "Super+Down", () => {
-  HYBRID_WINDOW_MANAGER.focusTile(1);
+  WINDOW_MANAGER.focusAdjacent(1);
 });
 COMPOSITOR.key.bind("window-monocle-toggle", "Super+F", () => {
-  HYBRID_WINDOW_MANAGER.toggleFocusedWindowMonocle();
+  WINDOW_MANAGER.toggleFocusedWindowMonocle();
 });
 COMPOSITOR.key.bind("window-close", "Super+W", () => {
-  HYBRID_WINDOW_MANAGER.closeFocusedWindow();
+  WINDOW_MANAGER.closeFocusedWindow();
 });
 COMPOSITOR.key.bind("tile-move-left", "Super+Shift+Left", () => {
-  HYBRID_WINDOW_MANAGER.moveFocusedTile(-1);
+  WINDOW_MANAGER.reorderFocused(-1);
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("tile-move-right", "Super+Shift+Right", () => {
-  HYBRID_WINDOW_MANAGER.moveFocusedTile(1);
+  WINDOW_MANAGER.reorderFocused(1);
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("window-move-monitor-up", "Super+Shift+Up", () => {
-  HYBRID_WINDOW_MANAGER.adaptiveMoveFocusedWindow("up");
+  WINDOW_MANAGER.adaptiveMoveFocusedWindow("up");
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("window-move-monitor-down", "Super+Shift+Down", () => {
-  HYBRID_WINDOW_MANAGER.adaptiveMoveFocusedWindow("down");
+  WINDOW_MANAGER.adaptiveMoveFocusedWindow("down");
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("window-fullscreen-toggle", "Super+Shift+F", () => {
-  HYBRID_WINDOW_MANAGER.toggleFocusedWindowFullscreen();
+  WINDOW_MANAGER.toggleFocusedWindowFullscreen();
 });
 COMPOSITOR.key.bind("window-float-toggle", "Super+V", () => {
-  HYBRID_WINDOW_MANAGER.toggleFocusedWindowFloating();
+  WINDOW_MANAGER.toggleFocusedWindowFloating();
 });
 COMPOSITOR.key.bind("tile-columns-increase", "Super+equal", () => {
-  const result = HYBRID_WINDOW_MANAGER.bumpColumns(1);
+  const result = WINDOW_MANAGER.setMaxColumns(1);
   if (result) {
     notify(`Workspace: ${result.index}\nColumns: ${result.columns}`);
   }
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("tile-columns-decrease", "Super+minus", () => {
-  const result = HYBRID_WINDOW_MANAGER.bumpColumns(-1);
+  const result = WINDOW_MANAGER.setMaxColumns(-1);
   if (result) {
     notify(`Workspace: ${result.index}\nColumns: ${result.columns}`);
   }
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("tile-columns-strict-toggle", "Super+Shift+equal", () => {
-  const result = HYBRID_WINDOW_MANAGER.toggleStrictColumns();
+  const result = WINDOW_MANAGER.toggleStrictColumns();
   if (result) {
     notify(
       `Workspace: ${result.index}\nStrict Columns: ${result.strict ? "On" : "Off"}`,
@@ -505,7 +601,7 @@ COMPOSITOR.key.bind("tile-columns-strict-toggle", "Super+Shift+equal", () => {
   scheduleWorkspaceBroadcast();
 });
 COMPOSITOR.key.bind("tile-columns-reset", "Super+Shift+minus", () => {
-  const result = HYBRID_WINDOW_MANAGER.resetWorkspaceLayout();
+  const result = WINDOW_MANAGER.resetWorkspaceLayout();
   if (result) {
     notify(`Workspace: ${result.index}\nReset to defaults`);
   }
@@ -515,22 +611,22 @@ COMPOSITOR.key.bind("tile-columns-reset", "Super+Shift+minus", () => {
 for (let i = 1; i <= 10; i++) {
   const key = i % 10;
   COMPOSITOR.key.bind(`workspace-activate-${key}`, `Super+${key}`, () => {
-    HYBRID_WINDOW_MANAGER.activate(
-      HYBRID_WINDOW_MANAGER.getCurrentMonitorName(),
+    WINDOW_MANAGER.activate(
+      WINDOW_MANAGER.getCurrentMonitorName(),
       i,
     );
     scheduleWorkspaceBroadcast();
   });
   COMPOSITOR.key.bind(`workspace-swap-${key}`, `Super+Ctrl+${key}`, () => {
-    HYBRID_WINDOW_MANAGER.swapWorkspace(
-      HYBRID_WINDOW_MANAGER.getCurrentMonitorName(),
+    WINDOW_MANAGER.swapWorkspace(
+      WINDOW_MANAGER.getCurrentMonitorName(),
       i,
     );
     scheduleWorkspaceBroadcast();
   });
   COMPOSITOR.key.bind(`workspace-move-window-${key}`, `Super+Shift+${key}`, () => {
-    HYBRID_WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
-      HYBRID_WINDOW_MANAGER.getCurrentMonitorName(),
+    WINDOW_MANAGER.moveFocusedWindowToWorkspaceIndex(
+      WINDOW_MANAGER.getCurrentMonitorName(),
       i,
     );
     scheduleWorkspaceBroadcast();
@@ -618,7 +714,7 @@ COMPOSITOR.input.configure((input, _context) => {
   };
 });
 
-HYBRID_WINDOW_MANAGER.configureWorkspaceGestureSpeed({
+WINDOW_MANAGER.configureWorkspaceGestureSpeed({
   workspaceScrollFactor: 1.5,
   workspaceScrollKineticFactor: 1,
   workspaceSwitchFactor: 1,
@@ -626,34 +722,34 @@ HYBRID_WINDOW_MANAGER.configureWorkspaceGestureSpeed({
 });
 
 COMPOSITOR.event.onOpen((window) => {
-  HYBRID_WINDOW_MANAGER.onOpen(window);
+  WINDOW_MANAGER.onOpen(window);
 });
 
 COMPOSITOR.event.onFirstCommit((window) => {
-  HYBRID_WINDOW_MANAGER.onFirstCommit(window);
+  WINDOW_MANAGER.onFirstCommit(window);
   scheduleWorkspaceBroadcast();
 });
 
 COMPOSITOR.event.onStartClose((window) => {
-  HYBRID_WINDOW_MANAGER.onStartClose(window);
+  WINDOW_MANAGER.onStartClose(window);
   scheduleWorkspaceBroadcast();
 });
 
 COMPOSITOR.event.onClose((window) => {
-  HYBRID_WINDOW_MANAGER.onClose(window);
+  WINDOW_MANAGER.onClose(window);
   scheduleWorkspaceBroadcast();
 });
 
 COMPOSITOR.event.onFocus((window, focused) => {
-  HYBRID_WINDOW_MANAGER.onFocus(window, focused);
+  WINDOW_MANAGER.onFocus(window, focused);
   if (focused) {
-    HYBRID_WINDOW_MANAGER.recordFocus(window.id);
+    WINDOW_MANAGER.recordFocus(window.id);
     scheduleWorkspaceBroadcast();
   }
 });
 
 COMPOSITOR.event.onPointerMoveAsync((event) => {
-  HYBRID_WINDOW_MANAGER.onPointerMove(event);
+  WINDOW_MANAGER.onPointerMove(event);
 
   // Also emits "leave" for other monitors that were previously inside.
   const pointerX = event.position.x;
@@ -670,52 +766,52 @@ COMPOSITOR.event.onPointerMoveAsync((event) => {
 });
 
 COMPOSITOR.event.onGestureSwipeAsync((event) => {
-  HYBRID_WINDOW_MANAGER.onGestureSwipe(event);
+  WINDOW_MANAGER.onGestureSwipe(event);
   scheduleWorkspaceBroadcast();
 });
 
 COMPOSITOR.event.onOutputChange((event) => {
-  HYBRID_WINDOW_MANAGER.onOutputChange(event);
+  WINDOW_MANAGER.onOutputChange(event);
   scheduleWorkspaceBroadcast();
 });
 
 COMPOSITOR.event.onCreateLayer(() => {
-  HYBRID_WINDOW_MANAGER.refreshUsableAreaLayouts();
+  WINDOW_MANAGER.refreshUsableAreaLayouts();
 });
 
 COMPOSITOR.event.onUpdateLayer(() => {
-  HYBRID_WINDOW_MANAGER.refreshUsableAreaLayouts();
+  WINDOW_MANAGER.refreshUsableAreaLayouts();
 });
 
 COMPOSITOR.event.onDestroyLayer(() => {
-  HYBRID_WINDOW_MANAGER.refreshUsableAreaLayouts();
+  WINDOW_MANAGER.refreshUsableAreaLayouts();
 });
 
 COMPOSITOR.event.onWindowResize((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowResize(event);
+  WINDOW_MANAGER.onWindowResize(event);
 });
 
 COMPOSITOR.pointer.bindWindowMoveModifier("Super");
 COMPOSITOR.pointer.bindWindowResizeModifier("Super");
 
 COMPOSITOR.event.onWindowMove((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowMove(event);
+  WINDOW_MANAGER.onWindowMove(event);
 });
 
 COMPOSITOR.event.onWindowMaximizeRequest((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowMaximizeRequest(event);
+  WINDOW_MANAGER.onWindowMaximizeRequest(event);
 });
 
 COMPOSITOR.event.onWindowMinimizeRequest((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowMinimizeRequest(event);
+  WINDOW_MANAGER.onWindowMinimizeRequest(event);
 });
 
 COMPOSITOR.event.onWindowFullscreenRequest((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowFullscreenRequest(event);
+  WINDOW_MANAGER.onWindowFullscreenRequest(event);
 });
 
 COMPOSITOR.event.onWindowActivateRequest((event) => {
-  HYBRID_WINDOW_MANAGER.onWindowActivateRequest(event);
+  WINDOW_MANAGER.onWindowActivateRequest(event);
   scheduleWorkspaceBroadcast();
 });
 
@@ -744,7 +840,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     };
   });
   const tiled = computed(
-    () => window.appId() === "mpv" || window.state[WINDOW_STATE_TILED](),
+    () => window.appId() === "mpv" || !window.state[WINDOW_STATE_FLOATING](),
   );
   const forceRectSize = computed(
     () =>
@@ -760,7 +856,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   );
 
   const monocle = window.state[WINDOW_STATE_MONOCLE];
-  const floating = computed(() => !window.state[WINDOW_STATE_TILED]());
+  const floating = computed(() => window.state[WINDOW_STATE_FLOATING]());
   const borderColor = computed(() =>
     floating()
       ? window.isFocused()
@@ -789,8 +885,13 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   const WINDOW_OPACITY_RULES: Record<string, number> = {
     "code-oss": 0.7,
   };
-  const ruleOpacity = WINDOW_OPACITY_RULES[window.appId() ?? ""] ?? 1;
-  const effectiveOpacity = computed(() => workspaceOpacity() * ruleOpacity);
+  // appId() resolves asynchronously for some clients (Electron included) —
+  // read it inside computed() so a late-arriving appId still applies, rather
+  // than baking in an incorrect ruleOpacity from the first composition pass.
+  const effectiveOpacity = computed(
+    () =>
+      workspaceOpacity() * (WINDOW_OPACITY_RULES[window.appId() ?? ""] ?? 1),
+  );
 
   var innerComponents = <ClientWindow />;
 
@@ -828,7 +929,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
     return (
       <ManagedWindow
         rect={managedRect}
-        zIndex={HYBRID_WINDOW_MANAGER.getWindowZIndex(window)}
+        zIndex={WINDOW_MANAGER.getWindowZIndex(window)}
         visibleOutputs={window.state[WINDOW_STATE_VISIBLE_OUTPUTS]}
         opacity={effectiveOpacity}
         forceRectSize={forceRectSize}
@@ -844,7 +945,7 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   return (
     <ManagedWindow
       rect={managedRect}
-      zIndex={HYBRID_WINDOW_MANAGER.getWindowZIndex(window)}
+      zIndex={WINDOW_MANAGER.getWindowZIndex(window)}
       visibleOutputs={window.state[WINDOW_STATE_VISIBLE_OUTPUTS]}
       opacity={effectiveOpacity}
       forceRectSize={forceRectSize}

@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+
+# Keqing-dots terminal control for ShojiWM (talks to its IPC socket)
+
+deps socat jq perl || exit 1
+
+SOCK="${XDG_RUNTIME_DIR:-/tmp}/shojiwm-${WAYLAND_DISPLAY:-wayland-0}.sock"
+
+_json_str() { printf '"%s"' "${1//\"/\\\"}"; }
+
+# Fire-and-forget: no "id" in the request, no response is sent back.
+_send() { printf '%s\n' "$1" | socat -u - UNIX-CONNECT:"$SOCK" >/dev/null 2>&1; }
+
+# Request/response: "id" included, read the single matching reply line back.
+_query() { printf '%s\n' "$1" | socat -T 1 - UNIX-CONNECT:"$SOCK" 2>/dev/null | head -n1; }
+
+# Collapses jq's one-number-per-line array pretty-printing to one line, for
+# fields that are just a coordinate/size pair.
+_compact_pairs() {
+    perl -0777 -pe 's/"(position|size)": \[\n\s*(-?\d+),\n\s*(-?\d+)\n\s*\]/"$1": [$2, $3]/g'
+}
+
+_is_direction() {
+    [[ "$1" == up || "$1" == down || "$1" == left || "$1" == right ]]
+}
+
+_get() { _query '{"id":1,"method":"workspaces.get"}'; }
+
+_windows_json() {
+    _get | jq '
+        [.result.monitors[] as $m |
+         $m.workspaces[] as $w |
+         $w.windows[] |
+         {id, title, appId, monitor: $m.name, workspace: $w.index,
+          active, urgent, monocle, position: [.position.x, .position.y], size: [.size.width, .size.height]}]
+    ' | _compact_pairs
+}
+
+_windows_current() {
+    _get | jq '
+        .result as $r |
+        ($r.monitors[] | select(.name == $r.currentMonitor)) as $m |
+        ($m.workspaces[] | select(.index == $m.active)) as $w |
+        [$w.windows[] |
+         {id, title, appId, monitor: $m.name, workspace: $w.index,
+          active, urgent, monocle, position: [.position.x, .position.y], size: [.size.width, .size.height]}]
+    ' | _compact_pairs
+}
+
+windows_cmd() {
+    case "$1" in
+        "") _windows_json ;;
+        active) _windows_json | jq '.[] | select(.active)' | _compact_pairs ;;
+        current) _windows_current ;;
+        close)
+            if [[ -n "$2" ]]; then
+                _send "{\"method\":\"windows.close\",\"params\":{\"windowId\":$(_json_str "$2")}}"
+            else
+                _send '{"method":"windows.close"}'
+            fi
+            ;;
+        focus)
+            [[ -n "$2" ]] || { echo "usage: shojictl windows focus <id|up|down|left|right>" >&2; exit 1; }
+            if _is_direction "$2"; then
+                _send "{\"method\":\"windows.focusDirection\",\"params\":{\"direction\":$(_json_str "$2")}}"
+            else
+                _send "{\"method\":\"windows.activate\",\"params\":{\"windowId\":$(_json_str "$2")}}"
+            fi
+            ;;
+        move)
+            shift
+            quiet="false"
+            args=()
+            for a in "$@"; do
+                [[ "$a" == "--quiet" ]] && { quiet="true"; continue; }
+                args+=("$a")
+            done
+            follow="true"; [[ "$quiet" == "true" ]] && follow="false"
+
+            if [[ ${#args[@]} -eq 1 ]] && _is_direction "${args[0]}"; then
+                _send "{\"method\":\"windows.moveDirection\",\"params\":{\"direction\":$(_json_str "${args[0]}")}}"
+            elif [[ ${#args[@]} -eq 2 ]] && _is_direction "${args[1]}"; then
+                _send "{\"method\":\"windows.moveDirection\",\"params\":{\"windowId\":$(_json_str "${args[0]}"),\"direction\":$(_json_str "${args[1]}")}}"
+            elif [[ ${#args[@]} -eq 2 ]]; then
+                _send "{\"method\":\"workspaces.moveWindow\",\"params\":{\"monitor\":$(_json_str "${args[0]}"),\"index\":${args[1]},\"follow\":$follow}}"
+            elif [[ ${#args[@]} -eq 3 ]]; then
+                _send "{\"method\":\"windows.moveTo\",\"params\":{\"windowId\":$(_json_str "${args[0]}"),\"monitor\":$(_json_str "${args[1]}"),\"index\":${args[2]},\"follow\":$follow}}"
+            else
+                echo "usage: shojictl windows move [id] <up|down|left|right>" >&2
+                echo "       shojictl windows move [id] <monitor> <workspaceId> [--quiet]" >&2
+                exit 1
+            fi
+            ;;
+        swap)
+            [[ -n "$2" && -n "$3" ]] || { echo "usage: shojictl windows swap <idA> <idB>" >&2; exit 1; }
+            _send "{\"method\":\"windows.swap\",\"params\":{\"windowIdA\":$(_json_str "$2"),\"windowIdB\":$(_json_str "$3")}}"
+            ;;
+        *) _windows_help >&2; exit 1 ;;
+    esac
+}
+
+workspace_cmd() {
+    case "$1" in
+        "") _get | jq '[.result.monitors[] as $m | $m.workspaces[] | select(.windowCount > 0) | {monitor: $m.name, workspace: .index, windowCount, active}]' ;;
+        active) _get | jq '.result as $r | ($r.monitors[] | select(.name == $r.currentMonitor)) as $m | {monitor: $m.name, workspace: $m.active}' ;;
+        focus)
+            [[ -n "$2" && -n "$3" ]] || { echo "usage: shojictl workspace focus <monitor> <workspaceId>" >&2; exit 1; }
+            _send "{\"method\":\"workspaces.activate\",\"params\":{\"monitor\":$(_json_str "$2"),\"index\":$3}}"
+            ;;
+        switch) _send "{\"method\":\"workspaces.switch\",\"params\":{\"direction\":${2:-1}}}" ;;
+        swap)
+            [[ -n "$2" && -n "$3" ]] || { echo "usage: shojictl workspace swap <monitor> <workspaceId>" >&2; exit 1; }
+            _send "{\"method\":\"workspaces.swap\",\"params\":{\"monitor\":$(_json_str "$2"),\"index\":$3}}"
+            ;;
+        moveinto)
+            [[ -n "$2" && -n "$3" ]] || { echo "usage: shojictl workspace moveinto <monitor> <workspaceId>" >&2; exit 1; }
+            _send "{\"method\":\"workspaces.moveInto\",\"params\":{\"monitor\":$(_json_str "$2"),\"index\":$3}}"
+            ;;
+        clear)
+            shift
+            scope="false"
+            args=()
+            for a in "$@"; do
+                [[ "$a" == "--all" ]] && { scope="true"; continue; }
+                args+=("$a")
+            done
+            monitor="null"; [[ -n "${args[0]}" ]] && monitor="$(_json_str "${args[0]}")"
+            index="${args[1]:-null}"
+            if [[ "$scope" == "true" ]]; then
+                _send "{\"method\":\"workspaces.clear\",\"params\":{\"scope\":\"all\"}}"
+            else
+                _send "{\"method\":\"workspaces.clear\",\"params\":{\"monitor\":$monitor,\"index\":$index}}"
+            fi
+            ;;
+        *) _workspace_help >&2; exit 1 ;;
+    esac
+}
+
+monitors_cmd() {
+    case "$1" in
+        "") _get | jq '[.result.monitors[].name]' ;;
+        active) _get | jq '.result.currentMonitor' ;;
+        *) _display_help >&2; exit 1 ;;
+    esac
+}
+
+_windows_help() {
+    cat <<'EOF'
+windows                                               list every open window
+windows active                                        the focused window
+windows current                                       windows on the focused monitor's active workspace
+windows close [id]                                    close a window, defaults to the focused one
+windows focus <id>                                    focus a window by id
+windows focus <up|down|left|right>                    focus the nearest monitor in that direction
+windows move [id] <up|down|left|right>                move a window to the nearest monitor in that direction, defaults to the focused window
+windows move [id] <monitor> <workspaceId> [--quiet]   move a window to a monitor+workspace, defaults to the focused window; --quiet keeps focus/view where it is
+windows swap <idA> <idB>                              swap two windows between their current workspaces
+EOF
+}
+
+_workspace_help() {
+    cat <<'EOF'
+workspace                                             list every non-empty workspace
+workspace active                                      the focused monitor's active workspace
+workspace focus <monitor> <workspaceId>               switch which workspace a monitor is showing
+workspace switch [-1|1]                               switch the current monitor's workspace by relative direction (default 1)
+workspace swap <monitor> <workspaceId>                swap all windows between the current workspace and another, on the same monitor
+workspace moveinto <monitor> <workspaceId>            move every window off the current workspace into another, on the same monitor
+workspace clear [monitor] [workspaceId] [--all]       close every window on a workspace, defaults to the focused monitor/workspace; --all closes every window everywhere
+EOF
+}
+
+_display_help() {
+    cat <<'EOF'
+monitors                                              list every connected monitor
+monitors active                                       the focused monitor
+EOF
+}
+
+_help() { echo "usage: shojictl <windows|workspace|monitors> [subcommand] [args]"; }
+
+case "$1" in
+    windows) shift; windows_cmd "$@" ;;
+    workspace) shift; workspace_cmd "$@" ;;
+    monitors) shift; monitors_cmd "$@" ;;
+    -h|--help|help|"") _help ;;
+    *) _help >&2; exit 1 ;;
+esac
