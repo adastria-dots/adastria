@@ -1007,14 +1007,21 @@ export class Workspace {
   // ===============
   public reorderFocused(direction: -1 | 1): boolean {
     const focused = this.focusedWindow();
-    if (!focused || this.isFloating(focused)) {
+    return focused ? this.reorderWindow(focused, direction) : false;
+  }
+
+  // Shifts a window one slot left/right in the tile order. false if it's
+  // floating, not on this workspace, or already at that edge — the same
+  // "did it actually move" signal Hyprland's adaptive_move checks manually
+  // via before/after position, used by WindowManager.moveWindowInDirection
+  // to decide whether to fall back to a cross-monitor move.
+  public reorderWindow(window: WaylandWindow, direction: -1 | 1): boolean {
+    if (this.isFloating(window)) {
       return false;
     }
 
     const tileable = this.layoutWindows();
-    const currentIndex = tileable.findIndex(
-      (window) => window.id === focused.id,
-    );
+    const currentIndex = tileable.findIndex((w) => w.id === window.id);
     if (currentIndex < 0) {
       return false;
     }
@@ -1025,11 +1032,11 @@ export class Workspace {
     }
 
     this.stopKineticScroll();
-    this.activeWindowId = focused.id;
-    this.moveWindowToIndex(focused, nextIndex);
-    this.scrollToWindow(focused);
+    this.activeWindowId = window.id;
+    this.moveWindowToIndex(window, nextIndex);
+    this.scrollToWindow(window);
     this.applyLayout();
-    focused.focus();
+    window.focus();
     return true;
   }
 
@@ -3220,6 +3227,11 @@ export class WindowManager {
     return true;
   }
 
+  // Mirrors Hyprland's adaptive_move (.config/hypr/utils/tiling.lua): try
+  // reordering the window within its workspace's tile order first, only
+  // fall back to a cross-monitor move if it was already at that edge (or
+  // the direction has no in-workspace meaning, up/down — shoji's tile order
+  // is a single axis, same aliasing as focusTile/Super+Up/Down).
   // Generalizes adaptiveMoveFocusedWindow to an explicit window id and all
   // four directions, for windows.moveDirection (shojictl `windows move`).
   public moveWindowInDirection(
@@ -3248,6 +3260,12 @@ export class WindowManager {
       }
       if (!window || !fromWorkspace) {
         return false;
+      }
+
+      if (direction === "left" || direction === "right") {
+        if (fromWorkspace.reorderWindow(window, direction === "left" ? -1 : 1)) {
+          return true;
+        }
       }
 
       const targetMonitor = this.nearestMonitorInDirection(
