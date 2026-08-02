@@ -871,20 +871,30 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
           : `${theme.textDim}AA`,
   );
 
+  const WINDOW_OPACITY_RULES: Record<string, number> = {
+    "code-oss": 0.7,
+  };
+
+  // Windows in WINDOW_OPACITY_RULES blend via a post-hoc compositor `opacity`,
+  // not native surface alpha, so they don't generate the client repaint damage
+  // that keeps the backdrop capture (and thus the ripple) recapturing under
+  // "on-source-damage-box" — an idle editor freezes the ripple on its last
+  // captured frame. Force per-frame recapture for those; damage-gated capture
+  // is fine (and cheaper) for native-alpha windows like kitty/ghostty, which
+  // already repaint often enough to look continuous.
   const backgroundShader = compileEffect({
     input: backdropSource(),
     capturePadding: 24,
-    invalidate: { kind: "on-source-damage-box", damagePadding: 8 },
+    invalidate:
+      window.appId() && window.appId()! in WINDOW_OPACITY_RULES
+        ? { kind: "always" }
+        : { kind: "on-source-damage-box", damagePadding: 8 },
     pipeline: [
       shaderStage(loadShader("./src/shaders/liquid-ripple.frag"), {
         uniforms: LIQUID_RIPPLE_UNIFORMS,
       }),
     ],
   });
-
-  const WINDOW_OPACITY_RULES: Record<string, number> = {
-    "code-oss": 0.7,
-  };
   // appId() resolves asynchronously for some clients (Electron included) —
   // read it inside computed() so a late-arriving appId still applies, rather
   // than baking in an incorrect ruleOpacity from the first composition pass.
@@ -896,8 +906,9 @@ COMPOSITOR.window.composition = (window: WaylandWindow) => {
   var innerComponents = <ClientWindow />;
 
   const TERMINALS = ["kitty", "ghostty"];
+  const RIPPLE_APPS = [...TERMINALS, "zen"];
 
-  if (TERMINALS.includes(window.appId() ?? "")) {
+  if (RIPPLE_APPS.includes(window.appId() ?? "")) {
     innerComponents = (
       <ShaderEffect shader={backgroundShader} direction="column">
         <ClientWindow />

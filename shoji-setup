@@ -156,7 +156,13 @@ rm -rf "$HOME/ShojiWM"
 git clone https://github.com/bea4dev/ShojiWM.git "$HOME/ShojiWM"
 (cd "$HOME/ShojiWM" && ./dist/install.sh)
 
-# 5. Enable services
+# 5. Clone and install shojictl
+step "Cloning and installing shojictl"
+rm -rf "$HOME/shojictl"
+git clone https://github.com/keqing-dots/shojictl.git "$HOME/shojictl"
+"$HOME/shojictl/install.sh"
+
+# 6. Enable services
 step "Enabling services"
 sudo systemctl enable NetworkManager bluetooth # network, bluetooth
 systemctl --user enable pipewire pipewire-pulse wireplumber syncthing # audio, sync
@@ -165,13 +171,13 @@ step "Masking dunst"
 systemctl --user mask dunst.service 2>/dev/null || true
 sudo systemctl mask dunst.service 2>/dev/null || true
 
-# 6. GRUB install
+# 7. GRUB install
 mountpoint -q /boot/efi && efi_dir=/boot/efi || efi_dir=/boot
 sudo mkdir -p /boot/grub
 sudo grub-install --target=x86_64-efi --efi-directory="$efi_dir" --bootloader-id=GRUB
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 
-# 7. update (skip: sddm, grub)
+# 8. update (skip: sddm, grub)
 step "Running update modules"
 for mod in stow sudo font cursor gtk desktop bin vscode yazi splash; do
     echo "  -> update $mod"
@@ -184,7 +190,7 @@ echo "  -> update cmdline --no-rebuild"
 echo "  -> update ramfs"
 "$R/scripts/update" ramfs
 
-# 8. Clone and setup keqing-shell
+# 9. Clone and setup keqing-shell
 step "Cloning keqing-shell"
 rm -rf "$HOME/keqing-shell"
 git clone https://github.com/keqing-dots/shell.git "$HOME/keqing-shell"
@@ -192,12 +198,12 @@ git clone https://github.com/keqing-dots/shell.git "$HOME/keqing-shell"
 step "Setting up keqing-shell"
 "$HOME/keqing-shell/setup"
 
-# 9. Git
+# 10. Git
 step "Configuring git"
 git config --global pull.rebase true
 git config --global push.autoSetupRemote true
 
-# 10. Greeter
+# 11. Greeter
 step "Machine type"
 read -r -p "Is this a PC? [y/N] " is_pc
 
