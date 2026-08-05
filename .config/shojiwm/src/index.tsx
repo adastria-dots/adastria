@@ -455,8 +455,8 @@ COMPOSITOR.process.once("fcitx5", {
   runPolicy: "once-per-session",
 });
 
-COMPOSITOR.process.once("keqing-shell", {
-  command: "keqing-shell",
+COMPOSITOR.process.once("kokusei", {
+  command: "kokusei",
   runPolicy: "once-per-session",
 });
 
@@ -506,7 +506,7 @@ COMPOSITOR.key.bind("matrix", "Super+M", () => {
   COMPOSITOR.process.spawn({ command: ["keqing-shell", "matrix"] });
 });
 COMPOSITOR.key.bind("logout", "Super+Q", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "logout"] });
+  COMPOSITOR.process.spawn({ command: ["kokusei", "logout"] });
 });
 COMPOSITOR.key.bind("visualizer", "Super+Shift+V", () => {
   COMPOSITOR.process.spawn({ command: ["keqing-shell", "visualizer"] });
@@ -515,7 +515,7 @@ COMPOSITOR.key.bind("overview", "Super+Tab", () => {
   COMPOSITOR.process.spawn({ command: ["keqing-shell", "overview"] });
 });
 COMPOSITOR.key.bind("launcher", "Shift+Space", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "launcher"] });
+  COMPOSITOR.process.spawn({ command: ["kokusei", "launcher"] });
 });
 
 COMPOSITOR.key.bind("code", "Super+C", () => {
