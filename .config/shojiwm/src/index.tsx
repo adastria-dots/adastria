@@ -480,39 +480,8 @@ COMPOSITOR.key.bind("chrome", "Super+B", () => {
 COMPOSITOR.key.bind("dolphin", "Super+E", () => {
   COMPOSITOR.process.spawn({ command: ["kitty", "yazi"] });
 });
-
-COMPOSITOR.key.bind("bar", "Super+A", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "bar"] });
-});
-COMPOSITOR.key.bind("bar-all", "Super+Shift+A", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "bar-all"] });
-});
-COMPOSITOR.key.bind("dock", "Super+D", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "dock"] });
-});
-COMPOSITOR.key.bind("dock-all", "Super+Shift+D", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "dock-all"] });
-});
-COMPOSITOR.key.bind("controlcenter", "Super+Shift+C", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "controlcenter"] });
-});
-COMPOSITOR.key.bind("settings", "Super+I", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "settings"] });
-});
-COMPOSITOR.key.bind("lock", "Super+L", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "lock"] });
-});
-COMPOSITOR.key.bind("matrix", "Super+M", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "matrix"] });
-});
 COMPOSITOR.key.bind("logout", "Super+Q", () => {
   COMPOSITOR.process.spawn({ command: ["kokusei", "logout"] });
-});
-COMPOSITOR.key.bind("visualizer", "Super+Shift+V", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "visualizer"] });
-});
-COMPOSITOR.key.bind("overview", "Super+Tab", () => {
-  COMPOSITOR.process.spawn({ command: ["keqing-shell", "overview"] });
 });
 COMPOSITOR.key.bind("launcher", "Shift+Space", () => {
   COMPOSITOR.process.spawn({ command: ["kokusei", "launcher"] });
