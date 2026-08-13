@@ -464,6 +464,7 @@ COMPOSITOR.process.service("cliphist-text", {
   command: ["wl-paste", "--type", "text", "--watch", "cliphist", "store"],
   restart: "on-exit",
 });
+
 COMPOSITOR.process.service("cliphist-image", {
   command: ["wl-paste", "--type", "image", "--watch", "cliphist", "store"],
   restart: "on-exit",
@@ -480,26 +481,39 @@ COMPOSITOR.key.bind("chrome", "Super+B", () => {
 COMPOSITOR.key.bind("dolphin", "Super+E", () => {
   COMPOSITOR.process.spawn({ command: ["kitty", "yazi"] });
 });
-COMPOSITOR.key.bind("logout", "Super+Q", () => {
+
+COMPOSITOR.key.bind("kokusei-logout", "Super+Q", () => {
   COMPOSITOR.process.spawn({ command: ["kokusei", "logout"] });
 });
-COMPOSITOR.key.bind("launcher", "Shift+Space", () => {
+
+COMPOSITOR.key.bind("kokusei-launcher", "Shift+Space", () => {
   COMPOSITOR.process.spawn({ command: ["kokusei", "launcher"] });
+});
+
+COMPOSITOR.key.bind("kokusei-settings", "Super+I", () => {
+  COMPOSITOR.process.spawn({ command: ["kokusei", "settings"] });
+});
+
+COMPOSITOR.key.bind("kokusei-bar", "Super+A", () => {
+  COMPOSITOR.process.spawn({ command: ["kokusei", "bar"] });
 });
 
 COMPOSITOR.key.bind("code", "Super+C", () => {
   COMPOSITOR.process.spawn({ command: ["code"] });
 });
+
 COMPOSITOR.key.bind("code-keqing-shell", "Super+Alt+K", () => {
   COMPOSITOR.process.spawn({
-    command: ["code", `${process.env.HOME}/keqing-shell`],
+    command: ["code", `${process.env.HOME}/kokusei`],
   });
 });
+
 COMPOSITOR.key.bind("code-keqing-dots", "Super+Shift+K", () => {
   COMPOSITOR.process.spawn({
     command: ["code", `${process.env.HOME}/keqing-dots`],
   });
 });
+
 COMPOSITOR.key.bind("screenshot-region-freeze", "Super+Shift+S", () => {
   COMPOSITOR.process.spawn({
     command: "screenshot",
@@ -509,43 +523,55 @@ COMPOSITOR.key.bind("screenshot-region-freeze", "Super+Shift+S", () => {
 COMPOSITOR.key.bind("tile-focus-left-quick", "Super+Left", () => {
   WINDOW_MANAGER.focusAdjacent(-1);
 });
+
 COMPOSITOR.key.bind("tile-focus-right-quick", "Super+Right", () => {
   WINDOW_MANAGER.focusAdjacent(1);
 });
+
 COMPOSITOR.key.bind("tile-focus-up", "Super+Up", () => {
   WINDOW_MANAGER.focusAdjacent(-1);
 });
+
 COMPOSITOR.key.bind("tile-focus-down", "Super+Down", () => {
   WINDOW_MANAGER.focusAdjacent(1);
 });
+
 COMPOSITOR.key.bind("window-monocle-toggle", "Super+F", () => {
   WINDOW_MANAGER.toggleFocusedWindowMonocle();
 });
+
 COMPOSITOR.key.bind("window-close", "Super+W", () => {
   WINDOW_MANAGER.closeFocusedWindow();
 });
+
 COMPOSITOR.key.bind("tile-move-left", "Super+Shift+Left", () => {
   WINDOW_MANAGER.reorderFocused(-1);
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("tile-move-right", "Super+Shift+Right", () => {
   WINDOW_MANAGER.reorderFocused(1);
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("window-move-monitor-up", "Super+Shift+Up", () => {
   WINDOW_MANAGER.adaptiveMoveFocusedWindow("up");
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("window-move-monitor-down", "Super+Shift+Down", () => {
   WINDOW_MANAGER.adaptiveMoveFocusedWindow("down");
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("window-fullscreen-toggle", "Super+Shift+F", () => {
   WINDOW_MANAGER.toggleFocusedWindowFullscreen();
 });
+
 COMPOSITOR.key.bind("window-float-toggle", "Super+V", () => {
   WINDOW_MANAGER.toggleFocusedWindowFloating();
 });
+
 COMPOSITOR.key.bind("tile-columns-increase", "Super+equal", () => {
   const result = WINDOW_MANAGER.setMaxColumns(1);
   if (result) {
@@ -553,6 +579,7 @@ COMPOSITOR.key.bind("tile-columns-increase", "Super+equal", () => {
   }
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("tile-columns-decrease", "Super+minus", () => {
   const result = WINDOW_MANAGER.setMaxColumns(-1);
   if (result) {
@@ -560,6 +587,7 @@ COMPOSITOR.key.bind("tile-columns-decrease", "Super+minus", () => {
   }
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("tile-columns-strict-toggle", "Super+Shift+equal", () => {
   const result = WINDOW_MANAGER.toggleStrictColumns();
   if (result) {
@@ -569,6 +597,7 @@ COMPOSITOR.key.bind("tile-columns-strict-toggle", "Super+Shift+equal", () => {
   }
   scheduleWorkspaceBroadcast();
 });
+
 COMPOSITOR.key.bind("tile-columns-reset", "Super+Shift+minus", () => {
   const result = WINDOW_MANAGER.resetWorkspaceLayout();
   if (result) {

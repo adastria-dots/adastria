@@ -9,9 +9,6 @@ L.register(2)
 
 hl.config({ input = { scroll_method = "no_scroll" } })
 
-hl.bind("SHIFT + SPACE", hl.dsp.exec_cmd("kokusei launcher"))
-hl.bind("SUPER + Q", hl.dsp.exec_cmd("kokusei logout"))
-
 B.auto_start({ 
 	"fcitx5",
 	"kokusei"
