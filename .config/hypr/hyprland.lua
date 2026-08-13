@@ -51,7 +51,7 @@ V.filemanager = V.terminal .. " yazi"
 V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot --freeze -m region -o $HOME/Pictures/screenshots/'"
 
 -- Keqing-shell IPC Calls
-V.qs = "keqing-shell "
+V.qs = "kokusei "
 V.bar_autohide = V.qs .. ""
 
 -- =====================
@@ -215,7 +215,7 @@ for k, v in pairs({
 	[B.mod("I")] = hl.dsp.exec_cmd(V.qs .. "settings"),
 	[B.mod("L")] = hl.dsp.exec_cmd(V.qs.."lock"),
 	[B.mod("M")] = hl.dsp.exec_cmd(V.qs .. "matrix"),
-	[B.mod("Q")] = hl.dsp.exec_cmd(V.qs .. "logout"),
+	[B.mod("Q")] = hl.dsp.exec_cmd(V.qs .. "starward"),
 	[B.mod("TAB")] = hl.dsp.exec_cmd(V.qs .. "overview"),
 	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.qs .. "bar-all"),
 	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.qs .. "controlcenter"),
