@@ -79,6 +79,10 @@ function M.register(cols)
 		if win and win.workspace and win.workspace.tiled_layout == "lua:scrollumns" then hl.dispatch(hl.dsp.layout("sync")) end
 	end)
 
+	hl.on("window.close", function(win)
+		if win and win.address then monocle[win.address] = nil end
+	end)
+
 	hl.layout.register("scrollumns", {
 		recalculate = function(ctx)
 			local targets = ctx.targets

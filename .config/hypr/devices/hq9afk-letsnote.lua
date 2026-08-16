@@ -11,5 +11,5 @@ hl.config({ input = { scroll_method = "no_scroll" } })
 
 B.auto_start({ 
 	"fcitx5",
-	"kokusei"
+	"keqing-shell"
 })
