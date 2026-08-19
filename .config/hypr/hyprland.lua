@@ -44,15 +44,14 @@ V.root = V.home .. "/keqing-dots"
 V.wpm = 10
 
 -- Applications
-V.terminal = "kitty"
-V.browser = "zen-browser"
-V.editor = "code"
-V.filemanager = V.terminal .. " yazi"
+V.terminal = "kitty "
+V.browser = "zen-browser "
+V.editor = "code "
+V.filemanager = V.terminal .. "yazi "
 V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot --freeze -m region -o $HOME/Pictures/screenshots/'"
 
 -- Keqing-shell IPC Calls
-V.qs = "kokusei "
-V.bar_autohide = V.qs .. ""
+V.shell = "kokusei "
 
 -- =====================
 -- ENVIRONMENT VARIABLES
@@ -210,18 +209,18 @@ hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
 
 -- keqing-shell
 for k, v in pairs({
-	[B.mod("A")] = hl.dsp.exec_cmd(V.qs .. "bar"),
-	[B.mod("D")] = hl.dsp.exec_cmd(V.qs .. "dock"),
-	[B.mod("I")] = hl.dsp.exec_cmd(V.qs .. "settings"),
-	[B.mod("L")] = hl.dsp.exec_cmd(V.qs.."lock"),
-	[B.mod("M")] = hl.dsp.exec_cmd(V.qs .. "matrix"),
-	[B.mod("Q")] = hl.dsp.exec_cmd(V.qs .. "starward"),
-	[B.mod("TAB")] = hl.dsp.exec_cmd(V.qs .. "overview"),
-	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.qs .. "bar-all"),
-	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.qs .. "controlcenter"),
-	[B.mod("D", "s")] = hl.dsp.exec_cmd(V.qs .. "dock-all"),
-	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.qs .. "visualizer"),
-	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.qs .. "launcher"),
+	[B.mod("A")] = hl.dsp.exec_cmd(V.shell .. "bar"),
+	[B.mod("D")] = hl.dsp.exec_cmd(V.shell .. "dock"),
+	[B.mod("I")] = hl.dsp.exec_cmd(V.shell .. "settings"),
+	[B.mod("L")] = hl.dsp.exec_cmd(V.shell.."lock"),
+	[B.mod("M")] = hl.dsp.exec_cmd(V.shell .. "matrix"),
+	[B.mod("Q")] = hl.dsp.exec_cmd(V.shell .. "starward"),
+	[B.mod("TAB")] = hl.dsp.exec_cmd(V.shell .. "overview"),
+	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.shell .. "bar-all"),
+	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.shell .. "controlcenter"),
+	[B.mod("D", "s")] = hl.dsp.exec_cmd(V.shell .. "dock-all"),
+	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.shell .. "visualizer"),
+	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.shell .. "launcher"),
 }) do
 	hl.bind(k, v)
 end
@@ -251,8 +250,8 @@ for k, v in pairs({
 	[B.mod("B")] = hl.dsp.exec_cmd(V.browser),
 	[B.mod("C")] = hl.dsp.exec_cmd(V.editor),
 	[B.mod("E")] = hl.dsp.exec_cmd(V.filemanager),
-	[B.mod("K", "a")] = hl.dsp.exec_cmd(V.editor .. " keqing-shell"),
-	[B.mod("K", "s")] = hl.dsp.exec_cmd(V.editor .. " keqing-dots"),
+	[B.mod("K", "a")] = hl.dsp.exec_cmd(V.editor .. V.shell),
+	[B.mod("K", "s")] = hl.dsp.exec_cmd(V.editor .. V.root),
 	[B.mod("S", "s")] = hl.dsp.exec_cmd(V.screenshot),
 	[B.mod("T")] = hl.dsp.exec_cmd(V.terminal),
 }) do
