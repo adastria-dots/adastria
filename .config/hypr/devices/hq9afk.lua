@@ -20,5 +20,5 @@ hl.config({ cursor = { default_monitor = "DP-3" } })
 B.auto_start({ 
 	"fcitx5",
 	"sunshine",
-	"keqing-shell start-locked"
+	"kokusei"
  })
