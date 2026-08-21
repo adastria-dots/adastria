@@ -217,7 +217,7 @@ for k, v in pairs({
 	[B.mod("Q")] = hl.dsp.exec_cmd(V.shell .. "starward"),
 	[B.mod("TAB")] = hl.dsp.exec_cmd(V.shell .. "overview"),
 	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.shell .. "bar-all"),
-	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.shell .. "controlcenter"),
+	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.shell .. "dashboard"),
 	[B.mod("D", "s")] = hl.dsp.exec_cmd(V.shell .. "dock-all"),
 	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.shell .. "visualizer"),
 	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.shell .. "launcher"),
