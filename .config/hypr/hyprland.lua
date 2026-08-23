@@ -241,6 +241,9 @@ for k, v in pairs({
 	[B.mod("minus")] = function() L.bump(-1) end,
 	[B.mod("equal", "s")] = L.toggle_strict,
 	[B.mod("minus", "s")] = L.reset,
+	[B.mod("L", "c")] = L.align_left,
+	[B.mod("R", "c")] = L.align_right,
+	[B.mod("E", "c")] = L.align_center,
 }) do
 	hl.bind(k, v, { repeating = true })
 end

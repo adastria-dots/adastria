@@ -7,6 +7,7 @@ local scroll = {}
 local overrides = {}
 local strict = {}
 local monocle = {}
+local align = {}
 
 local function resolve_max_cols(cols, mon_name)
 	if type(cols) == "table" then return cols[mon_name] or 1 end
@@ -41,11 +42,36 @@ function M.toggle_strict()
 	notify("Workspace: " .. ws.name .. "\nStrict Columns: " .. (enabled and "On" or "Off"))
 end
 
+function M.align_left()
+	local ws = hl.get_active_workspace()
+	if not ws then return end
+	align[ws.id] = "left"
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nAlign: Left")
+end
+
+function M.align_right()
+	local ws = hl.get_active_workspace()
+	if not ws then return end
+	align[ws.id] = "right"
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nAlign: Right")
+end
+
+function M.align_center()
+	local ws = hl.get_active_workspace()
+	if not ws then return end
+	align[ws.id] = nil
+	hl.dispatch(hl.dsp.layout("sync"))
+	notify("Workspace: " .. ws.name .. "\nAlign: Center")
+end
+
 function M.reset()
 	local ws = hl.get_active_workspace()
 	if not ws then return end
 	overrides[ws.id] = nil
 	strict[ws.id] = nil
+	align[ws.id] = nil
 	for _, w in ipairs(hl.get_workspace_windows(ws.id)) do
 		if monocle[w.address] then set_monocle_tag(w.address, false) end
 		monocle[w.address] = nil
@@ -122,11 +148,20 @@ function M.register(cols)
 			scroll_px = math.max(0, math.min(scroll_px, max_scroll))
 			if ws_id then scroll[ws_id] = scroll_px end
 
-			local center_shift = total < ctx.area.w and (ctx.area.w - total) / 2 or 0
+			local ws_align = (ws_id and align[ws_id]) or "center"
+			local slack = math.max(0, ctx.area.w - total)
+			local align_shift
+			if ws_align == "left" then
+				align_shift = 0
+			elseif ws_align == "right" then
+				align_shift = slack
+			else
+				align_shift = slack / 2
+			end
 
 			for i, t in ipairs(targets) do
 				t:place({
-					x = ctx.area.x + center_shift + pos[i] - scroll_px,
+					x = ctx.area.x + align_shift + pos[i] - scroll_px,
 					y = ctx.area.y,
 					w = widths[i],
 					h = ctx.area.h,
