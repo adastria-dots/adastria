@@ -27,7 +27,6 @@ CORE_PKGS=(
 
 COMPOSITOR_PKGS=(
     hyprland
-    quickshell
     wl-clipboard
     xdg-desktop-portal
     xdg-desktop-portal-hyprland
@@ -69,8 +68,6 @@ DESKTOP_PKGS=(
     kitty
     libnotify
     mpv
-    qt6-declarative
-    qt6-multimedia
 )
 
 CLI_PKGS=(
@@ -165,20 +162,12 @@ echo "  -> update cmdline --no-rebuild"
 echo "  -> update ramfs"
 "$R/scripts/update" ramfs
 
-# 7. Clone and setup keqing-shell
-step "Cloning keqing-shell"
-rm -rf "$HOME/keqing-shell"
-git clone https://github.com/keqing-dots/shell.git "$HOME/keqing-shell"
-
-step "Setting up keqing-shell"
-"$HOME/keqing-shell/setup"
-
-# 8. Git
+# 7. Git
 step "Configuring git"
 git config --global pull.rebase true
 git config --global push.autoSetupRemote true
 
-# 10. Greeter
+# 8. Greeter
 step "Machine type"
 read -r -p "Is this a PC? [y/N] " is_pc
 
