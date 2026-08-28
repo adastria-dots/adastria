@@ -1,18 +1,19 @@
-local TITLE = "Clipboard"
+local TITLE = "Wormhole"
 
 local GET_TARGETS = ya.sync(function()
 	local urls = {}
 
+	-- yazi >=26: iterating cx.yanked / cx.active.selected yields File objects,
+	-- so take .url (tostring on the File itself gives "File: 0x...").
 	if cx.yanked then
-		for k, v in pairs(cx.yanked) do
-			local u = type(v) == "userdata" and v or k
-			urls[#urls + 1] = tostring(u)
+		for _, f in pairs(cx.yanked) do
+			urls[#urls + 1] = tostring(f.url)
 		end
 	end
 
 	if #urls == 0 and cx.active.selected then
-		for _, u in pairs(cx.active.selected) do
-			urls[#urls + 1] = tostring(u)
+		for _, f in pairs(cx.active.selected) do
+			urls[#urls + 1] = tostring(f.url)
 		end
 	end
 
@@ -64,10 +65,17 @@ local function basename(path)
 	return (path or ""):gsub("/+$", ""):match("([^/]+)$")
 end
 
+-- Percent-encode a filesystem path into a file:// URI, the way yazi itself does
+-- for drag-and-drop. This is the format GUI file managers exchange as
+-- text/uri-list.
+local function path_to_uri(path)
+	return "file://" .. ya.percent_encode(tostring(path))
+end
+
 local function state_path()
 	local home = os.getenv("HOME") or "."
 	local state_home = os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")
-	return state_home .. "/yazi/clipboard.yazi"
+	return state_home .. "/yazi/wormhole"
 end
 
 local function ensure_state_dir(path)
@@ -104,8 +112,14 @@ local function clear_state()
 	Command("rm"):arg({ "-f", path }):status()
 end
 
-local function wl_copy(text)
-	local status, err = Command("wl-copy"):arg({ "--type", "text/plain", "--", text }):status()
+local function wl_copy(paths)
+	local lines = {}
+	for _, p in ipairs(paths) do
+		lines[#lines + 1] = path_to_uri(p)
+	end
+	local status, err = Command("wl-copy")
+		:arg({ "--type", "text/uri-list", "--", table.concat(lines, "\r\n") })
+		:status()
 	if not status then
 		return false, err
 	end
@@ -113,17 +127,15 @@ local function wl_copy(text)
 end
 
 local function wl_paste()
-	local output, err = Command("wl-paste"):arg({ "--no-newline" }):output()
-	if not output then
-		return nil, err
-	end
-	if not output.status.success then
-		if (output.stdout == nil or output.stdout == "") and (output.stderr == nil or output.stderr == "") then
-			return "", nil
+	for _, t in ipairs({ "text/uri-list", "text/plain" }) do
+		local output = Command("wl-paste"):arg({ "--no-newline", "--type", t }):output()
+		if output and output.status.success then
+			return output.stdout or "", nil
 		end
-		return nil, output.stderr
 	end
-	return output.stdout, nil
+	-- ponytail: on failure we can't tell "clipboard empty" from "wl-paste missing";
+	-- treat both as empty. The copy path already surfaces a missing binary.
+	return "", nil
 end
 
 local function copy_or_cut(action)
@@ -146,7 +158,7 @@ local function copy_or_cut(action)
 	end
 
 	write_mode(action == "cut" and "cut" or "copy")
-	local ok, err = wl_copy(table.concat(norm, "\n"))
+	local ok, err = wl_copy(norm)
 	if not ok then
 		notify("error", "wl-copy failed: " .. tostring(err), 3)
 		return
@@ -156,8 +168,10 @@ local function copy_or_cut(action)
 end
 
 local function paste()
+	-- The keymap runs native `paste` before this plugin, so an in-yazi yank is
+	-- already handled; we only cover the "nothing yanked -> pull from the system
+	-- clipboard" case.
 	if HAS_YANKED() then
-		ya.manager_emit("paste", {})
 		return
 	end
 
@@ -173,10 +187,12 @@ local function paste()
 	end
 
 	local srcs = {}
-	for line in (content .. "\n"):gmatch("(.-)\n") do
-		local p = normalize_path(line)
-		if p and p ~= "" then
-			srcs[#srcs + 1] = p
+	for line in (content .. "\n"):gmatch("(.-)\r?\n") do
+		if line:sub(1, 1) ~= "#" then -- skip text/uri-list comment lines
+			local p = normalize_path(line)
+			if p and p ~= "" then
+				srcs[#srcs + 1] = p
+			end
 		end
 	end
 	if #srcs == 0 then
@@ -184,6 +200,9 @@ local function paste()
 		return
 	end
 
+	-- ponytail: pastes originating from a GUI file manager are always treated as
+	-- copy; their cut markers are per-manager (x-kde-cutselection,
+	-- x-special/nautilus-clipboard, ...). Add per-manager probes only if it bites.
 	local mode = read_mode()
 	local dest = normalize_path(CURRENT_CWD())
 	local cmd = (mode == "cut") and "mv" or "cp"
@@ -206,9 +225,13 @@ local function paste()
 
 	local success = out.status.success
 	if not success and mode == "cut" then
+		-- mv can partially succeed; accept only if every destination now exists
+		-- (a bogus/missing source leaves no destination -> real failure).
+		local dd = (dest or ""):gsub("/+$", "")
 		success = true
 		for _, src in ipairs(srcs) do
-			if fs.metadata(Url(src)) then
+			local name = basename(src)
+			if not (name and fs.metadata(Url(dd .. "/" .. name))) then
 				success = false; break
 			end
 		end
@@ -230,7 +253,7 @@ local function paste()
 			end
 		end
 		if #new_paths > 0 then
-			wl_copy(table.concat(new_paths, "\n"))
+			wl_copy(new_paths)
 			write_mode("cut")
 		else
 			clear_state()

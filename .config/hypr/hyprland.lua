@@ -8,25 +8,10 @@ local L = require("utils.layout")
 -- COLORS
 -- =========
 local col = {
-	-- dark range (color0–7)
-	base = "#0A0614",
-	surface = "#110B22",
-	surfaceAlt = "#1A1238",
-	accentAltContainer = "#2B1D5C",
-	accentContainer = "#3D1878",
 	lavender = "#5E50A0",
 	textDim = "#5E50A0",
-	rose = "#7A4A58",
-	textMuted = "#A896C8",
-	-- bright range (color8–15)
-	fieldBg = "#0F1535",
-	overlay = "#1C1848",
-	overlayAlt = "#252060",
 	accentAlt = "#C8942A",
-	accentDim = "#5535B8",
 	accent = "#7B2FE8",
-	lavenderLight = "#C87EFF",
-	text = "#F0ECF8",
 }
 
 -- =========
@@ -41,7 +26,7 @@ V.home = os.getenv("HOME")
 
 -- Core
 V.root = V.home .. "/keqing-dots"
-V.wpm = 10
+V.wpm = B.WPM
 
 -- Applications
 V.terminal = "kitty "
@@ -198,110 +183,24 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 -- ============
 -- WINDOW RULES
 -- ============
-hl.window_rule({ match = { fullscreen = true }, border_color = V.col.accentAlt })
-hl.window_rule({ match = { float = true }, border_color = "#FFFFFF #FFFFFFAA" })
-hl.window_rule({ match = { tag = "monocle" }, border_color = V.col.accentAlt .. "EE " .. V.col.accentAlt .. "AA" })
-hl.window_rule({ match = { class = "code-oss" }, opacity = "0.7" })
+for _, rule in ipairs({
+	{ match = { fullscreen = true }, border_color = V.col.accentAlt },
+	{ match = { float = true }, border_color = "#FFFFFF #FFFFFFAA" },
+	{ match = { tag = "monocle" }, border_color = V.col.accentAlt .. "EE " .. V.col.accentAlt .. "AA" },
+	{ match = { class = "code-oss" }, opacity = "0.7" },
+}) do
+	hl.window_rule(rule)
+end
 
 -- ===========
 -- KEYBINDINGS
 -- ===========
+require("utils.bind")(V, B, T, L)
 
--- keqing-shell
-for k, v in pairs({
-	[B.mod("A")] = hl.dsp.exec_cmd(V.shell .. "bar"),
-	[B.mod("D")] = hl.dsp.exec_cmd(V.shell .. "dock"),
-	[B.mod("I")] = hl.dsp.exec_cmd(V.shell .. "settings"),
-	[B.mod("L")] = hl.dsp.exec_cmd(V.shell.."lock"),
-	[B.mod("M")] = hl.dsp.exec_cmd(V.shell .. "matrix"),
-	[B.mod("Q")] = hl.dsp.exec_cmd(V.shell .. "starward"),
-	[B.mod("TAB")] = hl.dsp.exec_cmd(V.shell .. "overview"),
-	[B.mod("A", "s")] = hl.dsp.exec_cmd(V.shell .. "bar-all"),
-	[B.mod("C", "s")] = hl.dsp.exec_cmd(V.shell .. "dashboard"),
-	[B.mod("D", "s")] = hl.dsp.exec_cmd(V.shell .. "dock-all"),
-	[B.mod("V", "s")] = hl.dsp.exec_cmd(V.shell .. "visualizer"),
-	["SHIFT + SPACE"] = hl.dsp.exec_cmd(V.shell .. "launcher"),
-}) do
-	hl.bind(k, v)
-end
-
--- Window states
-for k, v in pairs({
-	[B.mod("F")] = L.toggle_monocle_or_maximize,
-	[B.mod("F", "s")] = hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }),
-	[B.mod("P")] = hl.dsp.window.pseudo(),
-	[B.mod("V")] = hl.dsp.window.float({ action = "toggle" }),
-}) do
-	hl.bind(k, v)
-end
-
--- Layout
-for k, v in pairs({
-	[B.mod("equal")] = function() L.bump(1) end,
-	[B.mod("minus")] = function() L.bump(-1) end,
-	[B.mod("equal", "s")] = L.toggle_strict,
-	[B.mod("minus", "s")] = L.reset,
-	[B.mod("L", "c")] = L.align_left,
-	[B.mod("R", "c")] = L.align_right,
-	[B.mod("E", "c")] = L.align_center,
-}) do
-	hl.bind(k, v, { repeating = true })
-end
-
--- Apps
-for k, v in pairs({
-	[B.mod("B")] = hl.dsp.exec_cmd(V.browser),
-	[B.mod("C")] = hl.dsp.exec_cmd(V.editor),
-	[B.mod("E")] = hl.dsp.exec_cmd(V.filemanager),
-	[B.mod("K", "a")] = hl.dsp.exec_cmd(V.editor .. V.shell),
-	[B.mod("K", "s")] = hl.dsp.exec_cmd(V.editor .. V.root),
-	[B.mod("S", "s")] = hl.dsp.exec_cmd(V.screenshot),
-	[B.mod("T")] = hl.dsp.exec_cmd(V.terminal),
-}) do
-	hl.bind(k, v)
-end
-
--- Window operations
-for k, v in pairs({
-	[B.mod("down")] = hl.dsp.focus({ direction = "d" }),
-	[B.mod("down", "s")] = function() T.adaptive_move("d") end,
-	[B.mod("left")] = hl.dsp.focus({ direction = "l" }),
-	[B.mod("left", "s")] = function() T.adaptive_move("l") end,
-	[B.mod("right")] = hl.dsp.focus({ direction = "r" }),
-	[B.mod("right", "s")] = function() T.adaptive_move("r") end,
-	[B.mod("up")] = hl.dsp.focus({ direction = "u" }),
-	[B.mod("up", "s")] = function() T.adaptive_move("u") end,
-	[B.mod("W")] = hl.dsp.window.close(),
-}) do
-	hl.bind(k, v, { repeating = true })
-end
-
--- Workspace operations
-for i = 1, V.wpm do
-	local k = i % V.wpm
-	hl.bind(B.mod(k), function() T.fw(i) end)
-	hl.bind(B.mod(k, "c"), function() T.sw(i) end)
-	hl.bind(B.mod(k, "s"), function() T.mw(i) end)
-end
-
--- Media
-for k, v in pairs({
-	["XF86AudioLowerVolume"] = hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%-"),
-	["XF86AudioMicMute"] = hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
-	["XF86AudioMute"] = hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
-	["XF86AudioRaiseVolume"] = hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 1%+"),
-	["XF86MonBrightnessDown"] = hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 1%-"),
-	["XF86MonBrightnessUp"] = hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 1%+"),
-}) do
-	hl.bind(k, v, { locked = true, repeating = true })
-end
-
--- Mouse
-for k, v in pairs({
-	[B.mod("mouse:272")] = hl.dsp.window.drag(),
-	[B.mod("mouse:273")] = hl.dsp.window.resize(),
-}) do
-	hl.bind(k, v, { mouse = true })
-end
-
-B.load_device()
+-- ======
+-- DEVICE
+-- ======
+local hostname = io.open("/etc/hostname")
+local device = hostname and hostname:read("*l")
+if hostname then hostname:close() end
+require("devices." .. device)

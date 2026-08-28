@@ -1,15 +1,6 @@
-local B = require("utils.bootstrap")
-local L = require("utils.layout")
-
-local monitors = {{ "eDP-1", "preferred", "0x0" }}
-
-B.setup_displays(monitors)
-
-L.register(2)
+local B, L = require("utils.bootstrap"), require("utils.layout")
 
 hl.config({ input = { scroll_method = "no_scroll" } })
-
-B.auto_start({ 
-	"fcitx5",
-	"kokusei"
-})
+B.auto_start({ "fcitx5", "kokusei" })
+B.setup_displays({ { "eDP-1", "preferred", "0x0" } })
+L.register(2)

@@ -1,6 +1,6 @@
 -- TILING (native workspace/window management)
 
-local WPM = 10
+local WPM = require("utils.bootstrap").WPM
 
 local Tiling = {}
 

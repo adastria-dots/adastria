@@ -1,12 +1,15 @@
 -- BOOTSTRAP
 
--- must match hyprland.lua's V.wpm
-local WPM = 10
-
 local B = {}
 
+B.WPM = 10
+
+function B.binds(opts, map)
+	for k, v in pairs(map) do hl.bind(k, v, opts) end
+end
+
 function B.assign_workspaces(monitor_names, wpm)
-	wpm = wpm or WPM
+	wpm = wpm or B.WPM
 	for mon_idx, monitor_name in ipairs(monitor_names) do
 		local base = (mon_idx - 1) * wpm
 		for i = 1, wpm do hl.workspace_rule({ workspace = base + i, monitor = monitor_name, persistent = true }) end
@@ -17,13 +20,6 @@ function B.auto_start(cmds)
 	return hl.on("hyprland.start", function()
 		for _, cmd in ipairs(cmds) do hl.exec_cmd(cmd) end
 	end)
-end
-
-function B.load_device()
-	local f = io.open("/etc/hostname")
-	local device = f and f:read("*l")
-	if f then f:close() end
-	return require("devices." .. (device or "hq9afk"))
 end
 
 function B.mod(key, mods)

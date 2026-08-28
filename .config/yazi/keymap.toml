@@ -30,7 +30,7 @@ desc = "show mounting menu"
 
 [[mgr.prepend_keymap]]
 on = "<C-c>"
-run = ["yank", "plugin clipboard -- copy"]
+run = ["yank", "plugin wormhole -- copy"]
 desc = "Copy selection to system clipboard"
 
 [[mgr.prepend_keymap]]
@@ -50,12 +50,12 @@ desc = "create files"
 
 [[mgr.prepend_keymap]]
 on = "<C-v>"
-run = ["paste", "plugin clipboard -- paste"]
+run = ["paste", "plugin wormhole -- paste"]
 desc = "Paste (yanked if available, else cross-window)"
 
 [[mgr.prepend_keymap]]
 on = "<C-x>"
-run = ["yank --cut", "plugin clipboard -- cut"]
+run = ["yank --cut", "plugin wormhole -- cut"]
 desc = "Cut selection via system clipboard"
 
 [[mgr.prepend_keymap]]
