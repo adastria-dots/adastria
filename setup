@@ -27,6 +27,8 @@ CORE_PKGS=(
 
 COMPOSITOR_PKGS=(
     hyprland
+    plymouth
+    qt6-multimedia
     wl-clipboard
     xdg-desktop-portal
     xdg-desktop-portal-hyprland
