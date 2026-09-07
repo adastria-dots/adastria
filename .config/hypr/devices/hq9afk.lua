@@ -7,6 +7,6 @@ B.setup_displays({
 	{ "HEADLESS", "1920x1080", "1600x1440" },
 	{ "DP-1", "2560x688@60", "5120x0", nil, 3 },
 })
-B.auto_start({ "fcitx5", "kokusei", "sunshine" })
+B.auto_start({ "fcitx5", "kokusei start-penance", "sunshine" })
 L.register({ ["DP-3"] = 3, ["DP-2"] = 2 })
 
