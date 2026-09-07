@@ -9,4 +9,3 @@ B.setup_displays({
 })
 B.auto_start({ "fcitx5", "kokusei start-penance", "sunshine" })
 L.register({ ["DP-3"] = 3, ["DP-2"] = 2 })
-
