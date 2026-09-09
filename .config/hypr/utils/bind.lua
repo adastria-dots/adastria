@@ -10,7 +10,7 @@ return function(V, B, T, L)
 		[mod("D")] = hl.dsp.exec_cmd(sh .. "dock"),
 		[mod("I")] = hl.dsp.exec_cmd(sh .. "trulla"),
 		[mod("L")] = hl.dsp.exec_cmd(sh .. "penance"),
-		[mod("M")] = hl.dsp.exec_cmd(sh .. "stiletto"),
+		[mod("M")] = hl.dsp.exec_cmd(sh .. "rain"),
 		[mod("Q")] = hl.dsp.exec_cmd(sh .. "starward"),
 		[mod("TAB")] = hl.dsp.exec_cmd(sh .. "liyue"),
 		[mod("A", "s")] = hl.dsp.exec_cmd(sh .. "bar-all"),
