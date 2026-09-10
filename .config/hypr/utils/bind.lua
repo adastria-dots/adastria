@@ -8,16 +8,16 @@ return function(V, B, T, L)
 	B.binds({}, {
 		[mod("A")] = hl.dsp.exec_cmd(sh .. "bar"),
 		[mod("D")] = hl.dsp.exec_cmd(sh .. "dock"),
-		[mod("I")] = hl.dsp.exec_cmd(sh .. "trulla"),
-		[mod("L")] = hl.dsp.exec_cmd(sh .. "penance"),
+		[mod("I")] = hl.dsp.exec_cmd(sh .. "settings"),
+		[mod("L")] = hl.dsp.exec_cmd(sh .. "lock"),
 		[mod("M")] = hl.dsp.exec_cmd(sh .. "rain"),
-		[mod("Q")] = hl.dsp.exec_cmd(sh .. "starward"),
-		[mod("TAB")] = hl.dsp.exec_cmd(sh .. "liyue"),
+		[mod("Q")] = hl.dsp.exec_cmd(sh .. "logout"),
+		[mod("TAB")] = hl.dsp.exec_cmd(sh .. "overview"),
 		[mod("A", "s")] = hl.dsp.exec_cmd(sh .. "bar-all"),
-		[mod("C", "s")] = hl.dsp.exec_cmd(sh .. "yuheng"),
+		[mod("C", "s")] = hl.dsp.exec_cmd(sh .. "dashboard"),
 		[mod("D", "s")] = hl.dsp.exec_cmd(sh .. "dock-all"),
-		[mod("V", "s")] = hl.dsp.exec_cmd(sh .. "resonance"),
-		["SHIFT + SPACE"] = hl.dsp.exec_cmd(sh .. "overseer"),
+		[mod("V", "s")] = hl.dsp.exec_cmd(sh .. "visualizer"),
+		["SHIFT + SPACE"] = hl.dsp.exec_cmd(sh .. "launcher"),
 	})
 
 	-- Window states
