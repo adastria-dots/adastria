@@ -1,5 +1,5 @@
 # 1. ENVIRONMENT & PATH
-export KEQING_DOTS_ROOT="$HOME/keqing-dots"
+export ADASTRIA_ROOT="$HOME/adastria"
 export -U PATH="$HOME/.local/bin:$PATH"
 
 # 2. SHELL OPTIONS & HISTORY
@@ -68,13 +68,13 @@ run() {
 # 7. ALIASES
 alias grep="grep --color=auto"
 alias ls="ls --color=auto"
-alias update="$KEQING_DOTS_ROOT/scripts/update"
+alias update="$ADASTRIA_ROOT/scripts/update"
 
 # 8. EXTERNAL SOURCING
 export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1
 CONDA_SRC="/opt/miniconda3/etc/profile.d/conda.sh"
 [ -f "$CONDA_SRC" ] && source "$CONDA_SRC"
-for f in "$KEQING_DOTS_ROOT/source/"*.sh(N); do source "$f"; done
+for f in "$ADASTRIA_ROOT/source/"*.sh(N); do source "$f"; done
 
 # 9. STARTUP EXECUTION
 greet

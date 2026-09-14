@@ -153,16 +153,7 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 
 # 6. update (skip: sddm, grub)
 step "Running update modules"
-for mod in stow sudo font cursor gtk desktop bin vscode yazi splash; do
-    echo "  -> update $mod"
-    "$R/scripts/update" "$mod"
-done
-echo "  -> update plymouth --no-rebuild"
-"$R/scripts/update" plymouth --no-rebuild
-echo "  -> update cmdline --no-rebuild"
-"$R/scripts/update" cmdline --no-rebuild
-echo "  -> update ramfs"
-"$R/scripts/update" ramfs
+"$R/scripts/update" all
 
 # 7. Git
 step "Configuring git"

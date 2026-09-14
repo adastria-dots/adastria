@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-R="${KEQING_DOTS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+R="${ADASTRIA_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TR="${UPDATE_TARGET_ROOT:-/}"
 TN="Keqing"
 SD="$R/scripts"
 TD="$R/system/themes"
 AD="$R/system/applications"
 
-MODS=(bin cmdline cursor desktop font gtk grub keqing plymouth sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
+MODS=(all bin cmdline cursor desktop font gtk grub plymouth sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
 
 BIN_IGNORE=()
 
@@ -306,15 +306,19 @@ update_splash() {
     update_ramfs "$1"
 }
 
-update_keqing() {
-    local repo action=(pull --rebase) label="Updating"
-    [[ "${1:-}" == "push" ]] && { action=(push); label="Pushing"; }
-    for repo in dots shell; do
-        echo "=> $label keqing-$repo..."
-        [[ -d ~/keqing-$repo ]] && git -C ~/keqing-$repo "${action[@]}" || echo "Error: ~/keqing-$repo does not exist."
-        echo
+update_all() {
+    local mods=(stow sudo font cursor gtk desktop bin vscode yazi splash)
+    local m
+    for m in "${mods[@]}"; do
+        echo "  -> update $m"
+        "$0" "$m"
     done
-    echo "=> Update complete!"
+    echo "  -> update plymouth --no-rebuild"
+    "$0" plymouth --no-rebuild
+    echo "  -> update cmdline --no-rebuild"
+    "$0" cmdline --no-rebuild
+    echo "  -> update ramfs"
+    "$0" ramfs
 }
 
 update_yazi() {
@@ -342,18 +346,16 @@ update_yazi() {
     ya pkg upgrade --discard
 }
 
-usage() { echo -e "Usage:\n  update <module> [args] [--remove]\n  update -h|--help\nModules:\n  ${MODS[*]}\nModule args:\n  grub <resolution>\n  grub --remove\n  keqing push\n  plymouth --no-rebuild\n  cmdline --no-rebuild"; exit "${1:-0}"; }
+usage() { echo -e "Usage:\n  update <module> [args] [--remove]\n  update -h|--help\nModules:\n  ${MODS[*]}\nModule args:\n  grub <resolution>\n  grub --remove\n  plymouth --no-rebuild\n  cmdline --no-rebuild"; exit "${1:-0}"; }
 
 [[ $# -eq 0 ]] && usage 2
 [[ "$1" == "-h" || "$1" == "--help" ]] && usage 0
 
-mod="$1"; shift; res=""; rm=0; arg=""; norebuild=0
+mod="$1"; shift; res=""; rm=0; norebuild=0
 
 if [[ "$mod" == "grub" ]]; then
     [[ $# -ge 1 ]] || die "grub: expected <res> or --remove"
     if [[ "$1" == "--remove" ]]; then rm=1; shift; else res="$1"; shift; [[ "${1:-}" == "--remove" ]] && { rm=1; shift; }; fi
-elif [[ "$mod" == "keqing" ]]; then
-    [[ "${1:-}" == "push" ]] && { arg="push"; shift; }
 else
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -366,8 +368,8 @@ fi
 [[ $# -gt 0 ]] && die "too many args"
 
 case "$mod" in
+    all) update_all ;;
     checkroot) echo "$R" &>/dev/null && echo true || echo false ;;
-    keqing) update_keqing "$arg" ;;
     stow) update_stow "$TR" "$rm" ;;
     shoji) update_shoji "$TR" "$rm" ;;
     sudo|font|cursor|gtk|ramfs|vscode) "update_$mod" "$TR" ;;

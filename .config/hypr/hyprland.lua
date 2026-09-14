@@ -25,7 +25,7 @@ V.col = col
 V.home = os.getenv("HOME")
 
 -- Core
-V.root = V.home .. "/keqing-dots"
+V.root = V.home .. "/adastria"
 V.wpm = B.WPM
 
 -- Applications
@@ -36,14 +36,14 @@ V.filemanager = V.terminal .. "yazi "
 V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot --freeze -m region -o $HOME/Pictures/screenshots/'"
 
 -- Keqing-shell IPC Calls
-V.shell = "kokusei "
+V.shell = "adastria-shell "
 
 -- =====================
 -- ENVIRONMENT VARIABLES
 -- =====================
 for k, v in pairs({
 	-- Core
-	KEQING_DOTS_ROOT = V.root,
+	ADASTRIA_ROOT = V.root,
 	WORKSPACES_PER_MONITOR = V.wpm,
 
 	-- Cursor themes
