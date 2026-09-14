@@ -41,10 +41,29 @@ _link() {
     fi
 }
 
+# Stows one package with its own source root, target and ignore pattern,
+# falling back to removing conflicting (stale/foreign) targets on dry-run
+# conflict before restowing for real.
+_stow_pkg() {
+    local pkg="$1" src="$2" tgt="$3" mode="$4" log="$5"; shift 5
+    stow -d "$R" -t "$tgt" --"$mode" -n -v "$pkg" "$@" >"$log" 2>&1 || {
+        grep -q "conflict\|existing target" "$log" || die "stow dry-run failed ($pkg):\n$(cat "$log")"
+        find "$src" -mindepth 1 -name '.git' -prune -o -type f -print0 | while IFS= read -r -d '' s; do
+            local t="$tgt/${s#$src/}"
+            if [[ -L "$t" ]]; then
+                [[ $(readlink -f "$t" 2>/dev/null) != $(readlink -f "$s" 2>/dev/null) ]] && { echo "removing conflicting symlink: $t"; rm -f "$t"; }
+            elif [[ -f "$t" ]]; then
+                echo "removing conflicting file: $t"
+                rm -f "$t"
+            fi
+        done
+    }
+    stow -d "$R" -t "$tgt" --"$mode" -v "$pkg" "$@"
+}
+
 update_stow() {
     [[ "$2" -eq 0 ]] || die "stow: --remove not supported"
     local T="${STOW_TARGET:-$HOME}" M="${STOW_MODE:-stow}" LOG="/tmp/stow-dry.out"
-    local IGN=(--ignore='^(?!\.config(/|$)|\.zshrc$|\.gtkrc-2\.0$).*' --ignore='(^|/)\.config/shojiwm(/|$)')
     [[ "$M" =~ ^(stow|restow)$ ]] || die "invalid STOW_MODE: $M"
     req_cmd stow; req_dir "$R"; cd "$R"
 
@@ -54,31 +73,20 @@ update_stow() {
     done < <(find "$T/.config" "$T/.zshrc" "$T/.gtkrc-2.0" -xtype l -print0 2>/dev/null)
     find "$T/.config" -depth -type d -empty -delete 2>/dev/null || true
 
-    find "$R/.config" -mindepth 1 -type d -exec bash -c 'd="$1/${2#$3/}"; [[ -d "$d" ]] || echo "creating dir: $d"; mkdir -p "$d"' _ "$T/.config" {} "$R/.config" \;
+    find "$R/dots" -mindepth 1 -type d -exec bash -c 'd="$1/${2#$3/}"; [[ -d "$d" ]] || echo "creating dir: $d"; mkdir -p "$d"' _ "$T/.config" {} "$R/dots" \;
 
-    stow -d "$R" -t "$T" --"$M" -n -v . "${IGN[@]}" >"$LOG" 2>&1 || {
-        grep -q "conflict\|existing target" "$LOG" || die "stow dry-run failed:\n$(cat "$LOG")"
-        find "$R" -mindepth 1 -name '.git' -prune -o -type f -print0 | while IFS= read -r -d '' s; do
-            local t="$T/${s#$R/}"
-            if [[ -L "$t" ]]; then
-                [[ $(readlink -f "$t" 2>/dev/null) != $(readlink -f "$s" 2>/dev/null) ]] && { echo "removing conflicting symlink: $t"; rm -f "$t"; }
-            elif [[ -f "$t" ]]; then
-                echo "removing conflicting file: $t"
-                rm -f "$t"
-            fi
-        done
-    }
-    stow -d "$R" -t "$T" --"$M" -v . "${IGN[@]}"
+    _stow_pkg dots "$R/dots" "$T/.config" "$M" "$LOG" --ignore='(^|/)shojiwm(/|$)'
+    _stow_pkg . "$R" "$T" "$M" "$LOG" --ignore='^(?!\.zshrc$|\.gtkrc-2\.0$).*'
 }
 
 # ShojiWM cannot resolve its own config correctly when the entrypoint is a
 # symlink (see local/context.md / local/issue.md) — deploy as real files
-# instead of stowing. update_stow ignores .config/shojiwm entirely; this is
+# instead of stowing. update_stow ignores dots/shojiwm entirely; this is
 # the only path that touches it. Clean-then-copy, no incremental diffing.
 update_shoji() {
     [[ "$2" -eq 0 ]] || die "shoji: --remove not supported"
     local T="${STOW_TARGET:-$HOME}"
-    local src="$R/.config/shojiwm/src" dst="$T/.config/shojiwm/src"
+    local src="$R/dots/shojiwm/src" dst="$T/.config/shojiwm/src"
     req_dir "$src"
 
     echo "cleaning $dst"
@@ -166,7 +174,7 @@ update_gtk() {
     { [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] || [[ -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; } \
         || { echo "no session bus, skipping gtk sync"; return 0; }
 
-    local ini="$R/.config/gtk-3.0/settings.ini"
+    local ini="$R/dots/gtk-3.0/settings.ini"
     [[ -f "$ini" ]] || die "missing $ini"
 
     local theme icon font cursor csize dark

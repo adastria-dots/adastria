@@ -36,7 +36,7 @@ V.filemanager = V.terminal .. "yazi "
 V.screenshot = "bash -c 'mkdir -p $HOME/Pictures/screenshots/ && hyprshot --freeze -m region -o $HOME/Pictures/screenshots/'"
 
 -- Keqing-shell IPC Calls
-V.shell = "adastria-shell "
+V.shell = "adastria "
 
 -- =====================
 -- ENVIRONMENT VARIABLES

@@ -1,5 +1,6 @@
 local B, L = require("utils.bootstrap"), require("utils.layout")
 
-B.auto_start({ "fcitx5", "kokusei" })
+hl.config({ input = { scroll_method = "no_scroll" } })
+B.auto_start({ "fcitx5", "adastria" })
 B.setup_displays({ { "eDP-1", "preferred", "0x0" } })
 L.register(2)
