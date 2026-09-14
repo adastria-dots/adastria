@@ -5,7 +5,7 @@
 # clipboard. Own wrapper around grim/slurp/hyprpicker instead of hyprshot
 # so freeze + save-to-folder + region-select stay one script, one keybind.
 
-deps grim slurp hyprpicker wl-copy || exit 1
+for c in grim slurp hyprpicker wl-copy; do command -v "$c" &>/dev/null || exit 1; done
 
 save_dir="$HOME/Pictures/screenshots"
 mkdir -p "$save_dir"

@@ -23,7 +23,7 @@ zstyle ':completion:*' menu select
 source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 
 # 4. CORE FUNCTIONS
-fetch() { deps fastfetch && fastfetch; }
+fetch() { command -v fastfetch &>/dev/null && fastfetch; }
 message() {
   printf '\e[38;2;155;87;244m'
   cat <<'EOF' | sed 's/^/      /'
@@ -41,7 +41,7 @@ EOF
 greet() { [[ -z "$TERM_PROGRAM" && -z "$TERMINAL_EMULATOR" ]] && { message; fetch; }; }
 clear() { command clear 2>/dev/null || printf '\033[H\033[2J\033[3J'; greet; }
 _find() {
-  deps fzf || return 1
+  command -v fzf &>/dev/null || return 1
   find "$HOME" -type d 2>/dev/null | awk -v s="/$1" 'substr($0,length($0)-length(s)+1)==s' | fzf --select-1 --exit-0 --layout=reverse
 }
 goto() {
@@ -51,7 +51,7 @@ goto() {
 }
 edit() {
   [[ -z "$1" ]] && { echo "Usage: edit <path-suffix>"; return 1; }
-  deps code || return 1
+  command -v code &>/dev/null || return 1
   local dir
   dir=$(_find "$1") && code "$dir"
 }
@@ -80,5 +80,5 @@ for f in "$ADASTRIA_ROOT/source/"*.sh(N); do source "$f"; done
 greet
 
 # 10. EXTERNAL TOOL INITIALIZATION
-deps starship && eval "$(starship init zsh)"
-deps zoxide && eval "$(zoxide init zsh --cmd cd)"
+command -v starship &>/dev/null && eval "$(starship init zsh)"
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh --cmd cd)"

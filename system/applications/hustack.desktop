@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=hustack
-Exec=helium-browser https://hustack.soict.ai
-Terminal=false

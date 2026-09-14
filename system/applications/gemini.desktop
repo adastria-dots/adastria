@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Gemini
-Exec=xdg-open https://gemini.google.com
-Terminal=false

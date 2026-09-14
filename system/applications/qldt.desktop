@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=qldt
-Exec=xdg-open https://qldt.hust.edu.vn
-Terminal=false

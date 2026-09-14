@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-deps nmcli || exit 1
+command -v nmcli &>/dev/null || exit 1
 
 current_network="$1"
 dns="$2"

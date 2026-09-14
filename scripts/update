@@ -6,9 +6,8 @@ TR="${UPDATE_TARGET_ROOT:-/}"
 TN="Keqing"
 SD="$R/scripts"
 TD="$R/system/themes"
-AD="$R/system/applications"
 
-MODS=(all bin cmdline cursor desktop font gtk grub plymouth sddm shoji sudo symlinks vscode yazi splash ramfs checkroot stow)
+MODS=(all bin cmdline cursor font gtk grub plymouth sddm sudo symlinks vscode yazi splash ramfs checkroot stow)
 
 BIN_IGNORE=()
 
@@ -75,30 +74,8 @@ update_stow() {
 
     find "$R/dots" -mindepth 1 -type d -exec bash -c 'd="$1/${2#$3/}"; [[ -d "$d" ]] || echo "creating dir: $d"; mkdir -p "$d"' _ "$T/.config" {} "$R/dots" \;
 
-    _stow_pkg dots "$R/dots" "$T/.config" "$M" "$LOG" --ignore='(^|/)shojiwm(/|$)'
+    _stow_pkg dots "$R/dots" "$T/.config" "$M" "$LOG"
     _stow_pkg . "$R" "$T" "$M" "$LOG" --ignore='^(?!\.zshrc$|\.gtkrc-2\.0$).*'
-}
-
-# ShojiWM cannot resolve its own config correctly when the entrypoint is a
-# symlink (see local/context.md / local/issue.md) — deploy as real files
-# instead of stowing. update_stow ignores dots/shojiwm entirely; this is
-# the only path that touches it. Clean-then-copy, no incremental diffing.
-update_shoji() {
-    [[ "$2" -eq 0 ]] || die "shoji: --remove not supported"
-    local T="${STOW_TARGET:-$HOME}"
-    local src="$R/dots/shojiwm/src" dst="$T/.config/shojiwm/src"
-    req_dir "$src"
-
-    echo "cleaning $dst"
-    rm -rf "$dst"
-    mkdir -p "$dst"
-
-    echo "copying $src -> $dst"
-    cp -r "$src"/. "$dst"/
-
-    rm -rf "$dst/node_modules"
-    mkdir -p "$dst/node_modules"
-    ln -sf /usr/lib/shojiwm/packages/shoji_wm "$dst/node_modules/shoji_wm"
 }
 
 update_sudo() {
@@ -193,23 +170,6 @@ update_gtk() {
     gsettings set org.gnome.desktop.interface color-scheme "$([[ "$dark" == "1" ]] && echo prefer-dark || echo default)"
 }
 
-update_desktop() {
-    local dst; dst=$(join_r "$1" "/usr/share/applications")
-    req_dir "$AD"
-    local files=()
-    while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$AD" -name "*.desktop" -print0)
-    [[ ${#files[@]} -gt 0 ]] || die "No .desktop files in $AD"
-
-    if [[ "$2" -eq 1 ]]; then
-        for f in "${files[@]}"; do _unlink "$dst/${f##*/}"; done
-    else
-        command -v desktop-file-validate &>/dev/null && desktop-file-validate "${files[@]}"
-        sudoc "$1" mkdir -p "$dst"
-        for f in "${files[@]}"; do _link "$f" "$dst/${f##*/}"; done
-    fi
-    [[ "$1" == "/" ]] && command -v update-desktop-database &>/dev/null && sudo update-desktop-database "$dst" &>/dev/null || true
-}
-
 update_bin() {
     local dst; dst=$(join_r "$1" "/usr/local/bin")
     
@@ -263,7 +223,7 @@ update_grub() {
 }
 
 update_sddm() {
-    deps sddm || die "sddm: missing dependency"
+    req_cmd sddm
     local dst_t; dst_t=$(join_r "$1" "/usr/share/sddm/themes/$TN")
     local dst_c; dst_c=$(join_r "$1" "/etc/sddm.conf")
 
@@ -290,7 +250,7 @@ update_cmdline() {
 }
 
 update_plymouth() {
-    deps plymouth-set-default-theme || die "plymouth: missing dependency"
+    req_cmd plymouth-set-default-theme
     local dst_t; dst_t=$(join_r "$1" "/usr/share/plymouth/themes/$TN")
 
     if [[ "$2" -eq 1 ]]; then
@@ -315,7 +275,7 @@ update_splash() {
 }
 
 update_all() {
-    local mods=(stow sudo font cursor gtk desktop bin vscode yazi splash)
+    local mods=(stow sudo font cursor gtk bin vscode yazi splash)
     local m
     for m in "${mods[@]}"; do
         echo "  -> update $m"
@@ -379,10 +339,9 @@ case "$mod" in
     all) update_all ;;
     checkroot) echo "$R" &>/dev/null && echo true || echo false ;;
     stow) update_stow "$TR" "$rm" ;;
-    shoji) update_shoji "$TR" "$rm" ;;
     sudo|font|cursor|gtk|ramfs|vscode) "update_$mod" "$TR" ;;
     symlinks) update_symlinks ;;
-    bin|desktop|yazi|sddm) "update_$mod" "$TR" "$rm" ;;
+    bin|yazi|sddm) "update_$mod" "$TR" "$rm" ;;
     plymouth) update_plymouth "$TR" "$rm" "$norebuild" ;;
     cmdline) update_cmdline "$TR" "$norebuild" ;;
     splash) update_splash "$TR" ;;

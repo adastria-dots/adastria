@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Zalo
-Exec=xdg-open https://chat.zalo.me
-Terminal=false

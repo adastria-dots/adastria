@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Facebook
-Exec=xdg-open https://facebook.com
-Terminal=false

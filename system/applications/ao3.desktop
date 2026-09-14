@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=AO3
-Exec=xdg-open https://archiveofourown.org
-Terminal=false

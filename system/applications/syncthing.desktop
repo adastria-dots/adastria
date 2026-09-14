@@ -1,6 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Syncthing
-Exec=xdg-open http://127.0.0.1:8384
-Terminal=false

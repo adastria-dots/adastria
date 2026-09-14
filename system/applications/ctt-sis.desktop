@@ -1,7 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=ctt-sis
-Comment=Access CTT-SIS
-Exec=xdg-open https://ctt-sis.hust.edu.vn
-Terminal=false

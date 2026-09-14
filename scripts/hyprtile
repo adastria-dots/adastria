@@ -2,7 +2,7 @@
 
 # Keqing-dots tiling wrapper for external applications
 
-deps hyprctl || exit 1
+command -v hyprctl &>/dev/null || exit 1
 
 GLOBAL="false"
 [[ "$1" == "gb" ]] && { GLOBAL="true"; shift; }
