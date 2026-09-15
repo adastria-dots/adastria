@@ -3,6 +3,7 @@
 local B = require("utils.bootstrap")
 local T = require("utils.tiling")
 local L = require("utils.layout")
+local Anim = require("utils.animations")
 
 -- =========
 -- COLORS
@@ -98,7 +99,7 @@ for _, anim in ipairs({
 	{ leaf = "windowsIn", speed = 1.5, bezier = "linear", style = "popin 85%" },
 	{ leaf = "windowsOut", speed = 1.5, bezier = "linear", style = "popin 85%" },
 	{ leaf = "windowsMove", speed = 2.0, bezier = "quick" },
-	{ leaf = "workspaces", speed = 2.5, bezier = "quick", style = "slidevert" },
+	{ leaf = "workspaces", speed = 2.0, bezier = "quick", style = "slidevert" },
 }) do
 	if anim.enabled == nil then anim.enabled = true end
 	hl.animation(anim)
@@ -134,7 +135,7 @@ hl.config({
 	},
 
 	animations = {
-		enabled = true,
+		enabled = Anim.enabled(),
 	},
 
 	input = {
@@ -195,7 +196,7 @@ end
 -- ===========
 -- KEYBINDINGS
 -- ===========
-require("utils.bind")(V, B, T, L)
+require("utils.bind")(V, B, T, L, Anim)
 
 -- ======
 -- DEVICE

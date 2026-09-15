@@ -1,12 +1,12 @@
 -- KEYBINDINGS
 
-return function(V, B, T, L)
+return function(V, B, T, L, Anim)
 	local mod = B.mod
 	local sh = V.shell
 
 	-- Shell
 	B.binds({}, {
-		[mod("A")] = hl.dsp.exec_cmd(sh .. "bar"),
+		[mod("A")] = Anim.toggle,
 		[mod("D")] = hl.dsp.exec_cmd(sh .. "dock"),
 		[mod("I")] = hl.dsp.exec_cmd(sh .. "settings"),
 		[mod("L")] = hl.dsp.exec_cmd(sh .. "lock"),
